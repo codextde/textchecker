@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Build output
+.output/
+dist/
+
+# WXT
+.wxt/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug
+npm-debug.log*
+pnpm-debug.log*
+
+# Test
+coverage/
+
+# Misc
+*.zip
+*.crx
+*.pem
+
+# Claude flow (generated)
+.claude-flow/
+.hive-mind/
