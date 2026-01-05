@@ -45,7 +45,6 @@ export async function checkGrammar(
       system: GRAMMAR_CHECK_SYSTEM_PROMPT,
       prompt: createGrammarCheckPrompt(text, language),
       temperature: 0.1, // Low temperature for consistent results
-      maxTokens: 2048,
     });
 
     // Parse the JSON response
@@ -110,7 +109,6 @@ export async function rewriteText(
       system: REWRITE_SYSTEM_PROMPT,
       prompt: createRewritePrompt(text, style),
       temperature: 0.7, // Higher temperature for creative rewriting
-      maxTokens: 2048,
     });
 
     return rewrittenText.trim();

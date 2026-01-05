@@ -41,7 +41,26 @@ In January 2025, [LanguageTool announced](https://languagetool.org/de/webextensi
 
 ## Installation
 
-### From Source
+### Download from Releases (Recommended)
+
+1. Go to the [Releases page](../../releases/latest)
+2. Download the zip file for your browser:
+   - `textchecker-chrome-*.zip` for Chrome, Edge, Brave, Arc
+   - `textchecker-firefox-*.zip` for Firefox
+3. Extract the zip file
+
+**Chrome / Edge / Brave / Arc:**
+1. Go to `chrome://extensions/` (or `edge://extensions/`, `brave://extensions/`)
+2. Enable "Developer mode" (toggle in top right)
+3. Click "Load unpacked"
+4. Select the extracted folder
+
+**Firefox:**
+1. Go to `about:debugging#/runtime/this-firefox`
+2. Click "Load Temporary Add-on"
+3. Select any file from the extracted folder
+
+### Build from Source
 
 1. Clone this repository:
    ```bash

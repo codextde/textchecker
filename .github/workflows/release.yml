@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Chrome extension
+        run: pnpm build
+
+      - name: Build Firefox extension
+        run: pnpm build:firefox
+
+      - name: Create Chrome zip
+        run: |
+          cd .output/chrome-mv3
+          zip -r ../../textchecker-chrome-${{ github.ref_name }}.zip .
+          cd ../..
+
+      - name: Create Firefox zip
+        run: |
+          cd .output/firefox-mv2
+          zip -r ../../textchecker-firefox-${{ github.ref_name }}.zip .
+          cd ../..
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            # First release - get all commits
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            # Get commits since last tag
+            CHANGELOG=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
+
+          # Escape for GitHub Actions
+          CHANGELOG="${CHANGELOG//'%'/'%25'}"
+          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
+          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
+
+          echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: TextChecker ${{ github.ref_name }}
+          body: |
+            ## TextChecker ${{ github.ref_name }}
+
+            A free, open-source alternative to LanguageTool browser extension.
+
+            ### Installation
+
+            **Chrome / Edge / Brave:**
+            1. Download `textchecker-chrome-${{ github.ref_name }}.zip`
+            2. Extract the zip file
+            3. Go to `chrome://extensions/`
+            4. Enable "Developer mode"
+            5. Click "Load unpacked" and select the extracted folder
+
+            **Firefox:**
+            1. Download `textchecker-firefox-${{ github.ref_name }}.zip`
+            2. Go to `about:debugging#/runtime/this-firefox`
+            3. Click "Load Temporary Add-on"
+            4. Select any file from the extracted folder
+
+            ### Changes
+
+            ${{ steps.changelog.outputs.changelog }}
+
+            ---
+
+            **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ github.ref_name }}...HEAD
+          files: |
+            textchecker-chrome-${{ github.ref_name }}.zip
+            textchecker-firefox-${{ github.ref_name }}.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true

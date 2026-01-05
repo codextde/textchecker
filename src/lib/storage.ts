@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS } from '@/types';
 // Helper to get from sync storage
 async function getSyncItem<T>(key: string, defaultValue: T): Promise<T> {
   const result = await browser.storage.sync.get(key);
-  return result[key] ?? defaultValue;
+  return (result[key] as T) ?? defaultValue;
 }
 
 // Helper to set sync storage
@@ -15,7 +15,7 @@ async function setSyncItem<T>(key: string, value: T): Promise<void> {
 // Helper to get from local storage
 async function getLocalItem<T>(key: string, defaultValue: T): Promise<T> {
   const result = await browser.storage.local.get(key);
-  return result[key] ?? defaultValue;
+  return (result[key] as T) ?? defaultValue;
 }
 
 // Helper to set local storage
@@ -32,9 +32,9 @@ export const apiKeysStorage = {
     await setSyncItem('apiKeys', value);
   },
   watch(callback: (value: APIKeys) => void): () => void {
-    const listener = (changes: { [key: string]: browser.Storage.StorageChange }, areaName: string) => {
+    const listener = (changes: Record<string, { oldValue?: unknown; newValue?: unknown }>, areaName: string) => {
       if (areaName === 'sync' && changes.apiKeys) {
-        callback(changes.apiKeys.newValue ?? {});
+        callback((changes.apiKeys.newValue as APIKeys) ?? {});
       }
     };
     browser.storage.onChanged.addListener(listener);
@@ -51,9 +51,9 @@ export const settingsStorage = {
     await setSyncItem('settings', value);
   },
   watch(callback: (value: Settings) => void): () => void {
-    const listener = (changes: { [key: string]: browser.Storage.StorageChange }, areaName: string) => {
+    const listener = (changes: Record<string, { oldValue?: unknown; newValue?: unknown }>, areaName: string) => {
       if (areaName === 'sync' && changes.settings) {
-        callback(changes.settings.newValue ?? DEFAULT_SETTINGS);
+        callback((changes.settings.newValue as Settings) ?? DEFAULT_SETTINGS);
       }
     };
     browser.storage.onChanged.addListener(listener);

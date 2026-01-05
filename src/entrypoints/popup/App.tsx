@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { settingsStorage, statsStorage } from '@/lib/storage';
-import type { Settings, AIProvider } from '@/types';
+import type { Settings, AIProvider, CheckMode } from '@/types';
 import { DEFAULT_SETTINGS } from '@/types';
 import { Settings as SettingsIcon, Power, Keyboard, Zap, AlertCircle, CheckCircle2 } from 'lucide-react';
 
@@ -40,8 +40,8 @@ export default function App() {
   }
 
   async function toggleCheckMode() {
-    const newMode = settings.checkMode === 'realtime' ? 'ondemand' : 'realtime';
-    const newSettings = { ...settings, checkMode: newMode };
+    const newMode: CheckMode = settings.checkMode === 'realtime' ? 'ondemand' : 'realtime';
+    const newSettings: Settings = { ...settings, checkMode: newMode };
     setSettings(newSettings);
     await settingsStorage.setValue(newSettings);
   }
