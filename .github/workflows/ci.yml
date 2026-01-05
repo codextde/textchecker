@@ -18,23 +18,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
+          cache: 'npm'
 
       - name: Install dependencies
-        run: pnpm install
+        run: npm ci
 
       - name: Type check
-        run: pnpm exec tsc --noEmit
+        run: npx tsc --noEmit
 
       - name: Build Chrome extension
-        run: pnpm build
+        run: npm run build
 
       - name: Build Firefox extension
-        run: pnpm build:firefox
+        run: npm run build:firefox
 
       - name: Upload Chrome build artifact
         uses: actions/upload-artifact@v4

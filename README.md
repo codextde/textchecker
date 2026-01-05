@@ -70,12 +70,12 @@ In January 2025, [LanguageTool announced](https://languagetool.org/de/webextensi
 
 2. Install dependencies:
    ```bash
-   pnpm install
+   npm install
    ```
 
 3. Build the extension:
    ```bash
-   pnpm build
+   npm run build
    ```
 
 4. Load the extension in Chrome:
@@ -99,16 +99,16 @@ In January 2025, [LanguageTool announced](https://languagetool.org/de/webextensi
 
 ```bash
 # Start development server with hot reload
-pnpm dev
+npm run dev
 
 # Build for production
-pnpm build
+npm run build
 
 # Build for Firefox
-pnpm build:firefox
+npm run build:firefox
 
 # Create distribution zip
-pnpm zip
+npm run zip
 ```
 
 ## Tech Stack
