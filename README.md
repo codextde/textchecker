@@ -2,6 +2,9 @@
 
 A **free, open-source alternative to LanguageTool** browser extension. Provides grammar, spelling, and style checking using AI models, powered by your own API keys.
 
+<img width="607" height="361" alt="image" src="https://github.com/user-attachments/assets/2252ce4f-0013-4f2f-9f62-2abb1b0a3dc5" />
+
+
 ## Why TextChecker?
 
 In January 2025, [LanguageTool announced](https://languagetool.org/de/webextension/premium-announcement) that their browser extension would become **paid-only**, requiring a premium subscription to use. After years of offering a free tier, they decided to restrict the browser extension exclusively to paying customers.
