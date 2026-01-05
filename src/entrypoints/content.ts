@@ -1,15 +1,22 @@
-import { settingsStorage } from '@/lib/storage';
-import { debounce, isEditableElement, getTextFromElement, setTextInElement, getSuggestionColor, getSuggestionLabel } from '@/lib/utils';
-import type { GrammarSuggestion, GrammarCheckResult, Settings } from '@/types';
-import { DEFAULT_SETTINGS } from '@/types';
+import { settingsStorage } from "@/lib/storage";
+import {
+  debounce,
+  isEditableElement,
+  getTextFromElement,
+  setTextInElement,
+  getSuggestionColor,
+  getSuggestionLabel,
+} from "@/lib/utils";
+import type { GrammarSuggestion, GrammarCheckResult, Settings } from "@/types";
+import { DEFAULT_SETTINGS } from "@/types";
 
 export default defineContentScript({
-  matches: ['<all_urls>'],
+  matches: ["<all_urls>"],
   allFrames: true,
-  runAt: 'document_idle',
+  runAt: "document_idle",
 
   async main(ctx) {
-    console.log('TextChecker content script loaded', window.location.href);
+    console.log("TextChecker content script loaded", window.location.href);
 
     let settings: Settings = DEFAULT_SETTINGS;
     let currentSuggestions: GrammarSuggestion[] = [];
@@ -25,7 +32,7 @@ export default defineContentScript({
     try {
       settings = await settingsStorage.getValue();
     } catch (error) {
-      console.error('Failed to load settings:', error);
+      console.error("Failed to load settings:", error);
     }
 
     // Watch for settings changes
@@ -39,7 +46,7 @@ export default defineContentScript({
         }
       });
     } catch (error) {
-      console.error('Failed to watch settings:', error);
+      console.error("Failed to watch settings:", error);
     }
 
     // Styles for Shadow DOM
@@ -173,6 +180,12 @@ export default defineContentScript({
         display: flex;
         align-items: center;
         gap: 8px;
+        flex: 1;
+      }
+
+      .tc-panel-title svg {
+        width: 16px;
+        height: 16px;
       }
 
       .tc-panel-close {
@@ -364,12 +377,13 @@ export default defineContentScript({
         return overlayContainer;
       }
 
-      overlayContainer = document.createElement('div');
-      overlayContainer.id = 'textchecker-overlay';
-      overlayContainer.style.cssText = 'position: absolute; top: 0; left: 0; pointer-events: none; z-index: 2147483647;';
+      overlayContainer = document.createElement("div");
+      overlayContainer.id = "textchecker-overlay";
+      overlayContainer.style.cssText =
+        "position: absolute; top: 0; left: 0; pointer-events: none; z-index: 2147483647;";
 
-      const shadow = overlayContainer.attachShadow({ mode: 'open' });
-      const style = document.createElement('style');
+      const shadow = overlayContainer.attachShadow({ mode: "open" });
+      const style = document.createElement("style");
       style.textContent = STYLES;
       shadow.appendChild(style);
       document.body.appendChild(overlayContainer);
@@ -389,23 +403,26 @@ export default defineContentScript({
     }
 
     // Check grammar via background script
-    async function checkGrammarRequest(text: string, forceCheck = false): Promise<GrammarCheckResult | null> {
+    async function checkGrammarRequest(
+      text: string,
+      forceCheck = false
+    ): Promise<GrammarCheckResult | null> {
       if (!text.trim() || text.length < 3) return null;
 
       try {
         const response = await browser.runtime.sendMessage({
-          type: 'CHECK_GRAMMAR',
+          type: "CHECK_GRAMMAR",
           payload: { text, forceCheck },
         });
 
         if (response.success) {
           return response.result as GrammarCheckResult;
         } else {
-          console.error('Grammar check failed:', response.error);
+          console.error("Grammar check failed:", response.error);
           return null;
         }
       } catch (error) {
-        console.error('Failed to check grammar:', error);
+        console.error("Failed to check grammar:", error);
         return null;
       }
     }
@@ -419,18 +436,27 @@ export default defineContentScript({
     };
 
     // Show/update status button near the active element
-    function showStatusButton(state: 'loading' | 'errors' | 'clean', errorCount = 0) {
+    function showStatusButton(
+      state: "loading" | "errors" | "clean",
+      errorCount = 0
+    ) {
       if (!activeElement) return;
 
       const container = createOverlayContainer();
       const shadow = container.shadowRoot!;
 
       // Remove existing button
-      shadow.querySelectorAll('.tc-status-btn').forEach(el => el.remove());
+      shadow.querySelectorAll(".tc-status-btn").forEach((el) => el.remove());
 
       const rect = activeElement.getBoundingClientRect();
-      statusButton = document.createElement('div');
-      statusButton.className = `tc-status-btn ${state === 'loading' ? 'tc-loading' : state === 'errors' ? 'tc-has-errors' : 'tc-no-errors'}`;
+      statusButton = document.createElement("div");
+      statusButton.className = `tc-status-btn ${
+        state === "loading"
+          ? "tc-loading"
+          : state === "errors"
+          ? "tc-has-errors"
+          : "tc-no-errors"
+      }`;
 
       // Position at bottom-right of the element
       const btnLeft = Math.min(rect.right - 80, window.innerWidth - 90);
@@ -438,17 +464,18 @@ export default defineContentScript({
 
       statusButton.style.cssText = `left: ${btnLeft}px; top: ${btnTop}px;`;
 
-      if (state === 'loading') {
+      if (state === "loading") {
         statusButton.innerHTML = `
           <div class="tc-status-icon"><div class="tc-spinner"></div></div>
-          <span>Checking...</span>
         `;
-      } else if (state === 'errors') {
+      } else if (state === "errors") {
         statusButton.innerHTML = `
           <div class="tc-status-icon" style="color: #ef4444;">${ICONS.alert}</div>
           <span class="tc-error-count">${errorCount}</span>
         `;
-        statusButton.title = `${errorCount} issue${errorCount > 1 ? 's' : ''} found. Click to see details.`;
+        statusButton.title = `${errorCount} issue${
+          errorCount > 1 ? "s" : ""
+        } found. Click to see details.`;
       } else {
         statusButton.innerHTML = `
           <div class="tc-status-icon" style="color: #22c55e;">${ICONS.check}</div>
@@ -457,15 +484,15 @@ export default defineContentScript({
       }
 
       // Prevent mousedown from triggering outside-click handlers
-      statusButton.addEventListener('mousedown', (e) => {
+      statusButton.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();
       });
 
-      statusButton.addEventListener('click', (e) => {
+      statusButton.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (state === 'errors' && currentSuggestions.length > 0) {
+        if (state === "errors" && currentSuggestions.length > 0) {
           toggleSuggestionPanel();
         }
       });
@@ -475,7 +502,9 @@ export default defineContentScript({
 
     function hideStatusButton() {
       if (overlayContainer?.shadowRoot) {
-        overlayContainer.shadowRoot.querySelectorAll('.tc-status-btn').forEach(el => el.remove());
+        overlayContainer.shadowRoot
+          .querySelectorAll(".tc-status-btn")
+          .forEach((el) => el.remove());
       }
       statusButton = null;
     }
@@ -499,8 +528,8 @@ export default defineContentScript({
       const shadow = container.shadowRoot!;
 
       const rect = activeElement.getBoundingClientRect();
-      suggestionPanel = document.createElement('div');
-      suggestionPanel.className = 'tc-panel';
+      suggestionPanel = document.createElement("div");
+      suggestionPanel.className = "tc-panel";
 
       // Position panel
       let left = rect.right - 370;
@@ -519,15 +548,21 @@ export default defineContentScript({
         <div class="tc-panel-header">
           <div class="tc-panel-title">
             ${ICONS.pencil}
-            <span>${errorCount} issue${errorCount > 1 ? 's' : ''} found</span>
+            <span>${errorCount} issue${errorCount > 1 ? "s" : ""} found</span>
           </div>
-          <button class="tc-panel-close" data-action="close-panel">${ICONS.close}</button>
+          <button class="tc-panel-close" data-action="close-panel">${
+            ICONS.close
+          }</button>
         </div>
         <div class="tc-panel-body">
-          ${currentSuggestions.map((s, i) => `
+          ${currentSuggestions
+            .map(
+              (s, i) => `
             <div class="tc-suggestion-card" data-index="${i}">
               <div class="tc-suggestion-header">
-                <span class="tc-badge" style="background: ${getSuggestionColor(s.type)}">${getSuggestionLabel(s.type)}</span>
+                <span class="tc-badge" style="background: ${getSuggestionColor(
+                  s.type
+                )}">${getSuggestionLabel(s.type)}</span>
               </div>
               <div class="tc-suggestion-text">
                 <span class="tc-original">${escapeHtml(s.original)}</span>
@@ -538,15 +573,21 @@ export default defineContentScript({
               <div class="tc-suggestion-actions">
                 <button class="tc-btn tc-btn-primary tc-btn-sm" data-action="apply" data-index="${i}">Apply</button>
                 <button class="tc-btn tc-btn-secondary tc-btn-sm" data-action="ignore" data-index="${i}">Ignore</button>
-                ${s.type === 'spelling' ? `<button class="tc-btn tc-btn-text tc-btn-sm" data-action="dictionary" data-index="${i}">Add to dictionary</button>` : ''}
+                ${
+                  s.type === "spelling"
+                    ? `<button class="tc-btn tc-btn-text tc-btn-sm" data-action="dictionary" data-index="${i}">Add to dictionary</button>`
+                    : ""
+                }
               </div>
             </div>
-          `).join('')}
+          `
+            )
+            .join("")}
         </div>
       `;
 
       // Event delegation for panel actions
-      suggestionPanel.addEventListener('click', async (e) => {
+      suggestionPanel.addEventListener("click", async (e) => {
         const target = e.target as HTMLElement;
         const action = target.dataset.action;
         const indexStr = target.dataset.index;
@@ -554,7 +595,7 @@ export default defineContentScript({
         e.preventDefault();
         e.stopPropagation();
 
-        if (action === 'close-panel') {
+        if (action === "close-panel") {
           hideSuggestionPanel();
           return;
         }
@@ -564,13 +605,13 @@ export default defineContentScript({
         const suggestion = currentSuggestions[index];
         if (!suggestion) return;
 
-        if (action === 'apply') {
+        if (action === "apply") {
           applySuggestion(suggestion);
           updatePanelAfterChange();
-        } else if (action === 'ignore') {
+        } else if (action === "ignore") {
           ignoreSuggestion(suggestion);
           updatePanelAfterChange();
-        } else if (action === 'dictionary') {
+        } else if (action === "dictionary") {
           await addToDictionary(suggestion.original);
           ignoreSuggestion(suggestion);
           updatePanelAfterChange();
@@ -578,10 +619,12 @@ export default defineContentScript({
       });
 
       // Highlight text when hovering over suggestion card
-      suggestionPanel.addEventListener('mouseover', (e) => {
-        const card = (e.target as HTMLElement).closest('.tc-suggestion-card') as HTMLElement;
+      suggestionPanel.addEventListener("mouseover", (e) => {
+        const card = (e.target as HTMLElement).closest(
+          ".tc-suggestion-card"
+        ) as HTMLElement;
         if (card) {
-          const index = parseInt(card.dataset.index || '0', 10);
+          const index = parseInt(card.dataset.index || "0", 10);
           highlightSuggestion(index);
         }
       });
@@ -590,7 +633,7 @@ export default defineContentScript({
 
       // Close panel when clicking outside
       setTimeout(() => {
-        document.addEventListener('mousedown', handlePanelOutsideClick, true);
+        document.addEventListener("mousedown", handlePanelOutsideClick, true);
       }, 10);
     }
 
@@ -602,7 +645,11 @@ export default defineContentScript({
 
       if (!clickedInPanel && !clickedOnStatusBtn) {
         hideSuggestionPanel();
-        document.removeEventListener('mousedown', handlePanelOutsideClick, true);
+        document.removeEventListener(
+          "mousedown",
+          handlePanelOutsideClick,
+          true
+        );
       }
     }
 
@@ -611,18 +658,18 @@ export default defineContentScript({
         suggestionPanel.remove();
       }
       suggestionPanel = null;
-      document.removeEventListener('mousedown', handlePanelOutsideClick, true);
+      document.removeEventListener("mousedown", handlePanelOutsideClick, true);
     }
 
     function updatePanelAfterChange() {
       if (currentSuggestions.length === 0) {
         hideSuggestionPanel();
-        showStatusButton('clean');
+        showStatusButton("clean");
       } else {
         // Re-render panel
         hideSuggestionPanel();
         showSuggestionPanel();
-        showStatusButton('errors', currentSuggestions.length);
+        showStatusButton("errors", currentSuggestions.length);
       }
       renderUnderlines();
     }
@@ -632,17 +679,25 @@ export default defineContentScript({
       if (!suggestion || !activeElement) return;
 
       // Scroll the text into view if needed
-      if (activeElement.tagName.toLowerCase() === 'textarea') {
+      if (activeElement.tagName.toLowerCase() === "textarea") {
         // Could implement scroll to position for textarea
       }
     }
 
     // Get character position rectangles
-    function getCharacterRects(element: HTMLElement, startIndex: number, endIndex: number): DOMRect[] {
+    function getCharacterRects(
+      element: HTMLElement,
+      startIndex: number,
+      endIndex: number
+    ): DOMRect[] {
       const tagName = element.tagName.toLowerCase();
 
-      if (tagName === 'textarea' || tagName === 'input') {
-        return getTextareaCharacterRects(element as HTMLTextAreaElement | HTMLInputElement, startIndex, endIndex);
+      if (tagName === "textarea" || tagName === "input") {
+        return getTextareaCharacterRects(
+          element as HTMLTextAreaElement | HTMLInputElement,
+          startIndex,
+          endIndex
+        );
       }
 
       // For contenteditable
@@ -684,12 +739,16 @@ export default defineContentScript({
       }
     }
 
-    function getTextareaCharacterRects(element: HTMLTextAreaElement | HTMLInputElement, startIndex: number, endIndex: number): DOMRect[] {
+    function getTextareaCharacterRects(
+      element: HTMLTextAreaElement | HTMLInputElement,
+      startIndex: number,
+      endIndex: number
+    ): DOMRect[] {
       const text = element.value;
       const computedStyle = window.getComputedStyle(element);
       const rect = element.getBoundingClientRect();
 
-      const mirror = document.createElement('div');
+      const mirror = document.createElement("div");
       mirror.style.cssText = `
         position: absolute;
         top: -9999px;
@@ -708,13 +767,13 @@ export default defineContentScript({
         width: ${element.offsetWidth}px;
       `;
 
-      const before = document.createElement('span');
+      const before = document.createElement("span");
       before.textContent = text.substring(0, startIndex);
 
-      const marked = document.createElement('span');
+      const marked = document.createElement("span");
       marked.textContent = text.substring(startIndex, endIndex);
 
-      const after = document.createElement('span');
+      const after = document.createElement("span");
       after.textContent = text.substring(endIndex);
 
       mirror.appendChild(before);
@@ -752,8 +811,8 @@ export default defineContentScript({
       const container = createOverlayContainer();
       const shadow = container.shadowRoot!;
 
-      currentPopover = document.createElement('div');
-      currentPopover.className = 'tc-popover';
+      currentPopover = document.createElement("div");
+      currentPopover.className = "tc-popover";
 
       // Position
       const viewportHeight = window.innerHeight;
@@ -767,7 +826,9 @@ export default defineContentScript({
 
       currentPopover.style.left = `${left}px`;
       if (showAbove) {
-        currentPopover.style.bottom = `${viewportHeight - anchorRect.top + 8}px`;
+        currentPopover.style.bottom = `${
+          viewportHeight - anchorRect.top + 8
+        }px`;
       } else {
         currentPopover.style.top = `${anchorRect.bottom + 8}px`;
       }
@@ -780,36 +841,42 @@ export default defineContentScript({
           <span class="tc-badge" style="background: ${color}">${label}</span>
           <span class="tc-original">${escapeHtml(suggestion.original)}</span>
           <span class="tc-arrow">→</span>
-          <span class="tc-replacement">${escapeHtml(suggestion.replacement)}</span>
+          <span class="tc-replacement">${escapeHtml(
+            suggestion.replacement
+          )}</span>
         </div>
         <div class="tc-explanation">${escapeHtml(suggestion.explanation)}</div>
         <div class="tc-popover-actions">
           <button class="tc-btn tc-btn-primary" data-action="apply">Apply</button>
           <button class="tc-btn tc-btn-secondary" data-action="ignore">Ignore</button>
-          ${suggestion.type === 'spelling' ? '<button class="tc-btn tc-btn-text" data-action="dictionary">+Dict</button>' : ''}
+          ${
+            suggestion.type === "spelling"
+              ? '<button class="tc-btn tc-btn-text" data-action="dictionary">+Dict</button>'
+              : ""
+          }
         </div>
       `;
 
-      currentPopover.addEventListener('mousedown', (e) => {
+      currentPopover.addEventListener("mousedown", (e) => {
         e.stopPropagation();
       });
 
-      currentPopover.addEventListener('click', async (e) => {
+      currentPopover.addEventListener("click", async (e) => {
         e.preventDefault();
         e.stopPropagation();
 
         const target = e.target as HTMLElement;
         const action = target.dataset.action;
 
-        if (action === 'apply') {
+        if (action === "apply") {
           applySuggestion(suggestion);
           hidePopover();
           updateStatusAfterChange();
-        } else if (action === 'ignore') {
+        } else if (action === "ignore") {
           ignoreSuggestion(suggestion);
           hidePopover();
           updateStatusAfterChange();
-        } else if (action === 'dictionary') {
+        } else if (action === "dictionary") {
           await addToDictionary(suggestion.original);
           ignoreSuggestion(suggestion);
           hidePopover();
@@ -822,7 +889,7 @@ export default defineContentScript({
       // Close on outside click - with delay to prevent immediate close
       if (popoverCloseTimeout) clearTimeout(popoverCloseTimeout);
       popoverCloseTimeout = setTimeout(() => {
-        document.addEventListener('mousedown', handlePopoverOutsideClick, true);
+        document.addEventListener("mousedown", handlePopoverOutsideClick, true);
       }, 100);
     }
 
@@ -838,7 +905,7 @@ export default defineContentScript({
       // Check if click is on an underline (will open new popover)
       const shadow = overlayContainer?.shadowRoot;
       if (shadow) {
-        const underlines = shadow.querySelectorAll('.tc-underline');
+        const underlines = shadow.querySelectorAll(".tc-underline");
         for (const underline of underlines) {
           if (path.includes(underline)) {
             return;
@@ -854,7 +921,11 @@ export default defineContentScript({
         clearTimeout(popoverCloseTimeout);
         popoverCloseTimeout = null;
       }
-      document.removeEventListener('mousedown', handlePopoverOutsideClick, true);
+      document.removeEventListener(
+        "mousedown",
+        handlePopoverOutsideClick,
+        true
+      );
 
       if (currentPopover?.parentNode) {
         currentPopover.remove();
@@ -864,15 +935,15 @@ export default defineContentScript({
 
     function updateStatusAfterChange() {
       if (currentSuggestions.length === 0) {
-        showStatusButton('clean');
+        showStatusButton("clean");
       } else {
-        showStatusButton('errors', currentSuggestions.length);
+        showStatusButton("errors", currentSuggestions.length);
       }
       renderUnderlines();
     }
 
     function escapeHtml(text: string): string {
-      const div = document.createElement('div');
+      const div = document.createElement("div");
       div.textContent = text;
       return div.innerHTML;
     }
@@ -881,31 +952,46 @@ export default defineContentScript({
       if (!activeElement) return;
 
       const text = getTextFromElement(activeElement);
-      const newText = text.substring(0, suggestion.startIndex) + suggestion.replacement + text.substring(suggestion.endIndex);
+      const newText =
+        text.substring(0, suggestion.startIndex) +
+        suggestion.replacement +
+        text.substring(suggestion.endIndex);
       setTextInElement(activeElement, newText);
 
-      const lengthDiff = suggestion.replacement.length - suggestion.original.length;
+      const lengthDiff =
+        suggestion.replacement.length - suggestion.original.length;
       currentSuggestions = currentSuggestions
         .filter((s) => s.id !== suggestion.id)
         .map((s) => {
           if (s.startIndex > suggestion.endIndex) {
-            return { ...s, startIndex: s.startIndex + lengthDiff, endIndex: s.endIndex + lengthDiff };
+            return {
+              ...s,
+              startIndex: s.startIndex + lengthDiff,
+              endIndex: s.endIndex + lengthDiff,
+            };
           }
           return s;
         });
 
-      browser.runtime.sendMessage({ type: 'CORRECTION_APPLIED' }).catch(() => {});
+      browser.runtime
+        .sendMessage({ type: "CORRECTION_APPLIED" })
+        .catch(() => {});
     }
 
     function ignoreSuggestion(suggestion: GrammarSuggestion) {
-      currentSuggestions = currentSuggestions.filter((s) => s.id !== suggestion.id);
+      currentSuggestions = currentSuggestions.filter(
+        (s) => s.id !== suggestion.id
+      );
     }
 
     async function addToDictionary(word: string) {
       try {
-        await browser.runtime.sendMessage({ type: 'ADD_TO_DICTIONARY', payload: { word } });
+        await browser.runtime.sendMessage({
+          type: "ADD_TO_DICTIONARY",
+          payload: { word },
+        });
       } catch (error) {
-        console.error('Failed to add to dictionary:', error);
+        console.error("Failed to add to dictionary:", error);
       }
     }
 
@@ -913,18 +999,22 @@ export default defineContentScript({
       const container = createOverlayContainer();
       const shadow = container.shadowRoot!;
 
-      shadow.querySelectorAll('.tc-underline').forEach((el) => el.remove());
+      shadow.querySelectorAll(".tc-underline").forEach((el) => el.remove());
 
       if (!activeElement || currentSuggestions.length === 0) return;
 
       currentSuggestions.forEach((suggestion) => {
-        const rects = getCharacterRects(activeElement!, suggestion.startIndex, suggestion.endIndex);
+        const rects = getCharacterRects(
+          activeElement!,
+          suggestion.startIndex,
+          suggestion.endIndex
+        );
 
         rects.forEach((rect) => {
           if (rect.width <= 0 || rect.height <= 0) return;
 
-          const underline = document.createElement('div');
-          underline.className = 'tc-underline';
+          const underline = document.createElement("div");
+          underline.className = "tc-underline";
           underline.style.cssText = `
             left: ${rect.left}px;
             top: ${rect.bottom - 2}px;
@@ -932,12 +1022,12 @@ export default defineContentScript({
             background: ${getSuggestionColor(suggestion.type)};
           `;
 
-          underline.addEventListener('mousedown', (e) => {
+          underline.addEventListener("mousedown", (e) => {
             e.preventDefault();
             e.stopPropagation();
           });
 
-          underline.addEventListener('click', (e) => {
+          underline.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
             showPopover(suggestion, rect);
@@ -954,7 +1044,7 @@ export default defineContentScript({
 
       activeElement = element;
 
-      if (settings.checkMode === 'realtime') {
+      if (settings.checkMode === "realtime") {
         const text = getTextFromElement(element);
         if (text.length > 10) {
           debouncedCheck(text);
@@ -978,7 +1068,7 @@ export default defineContentScript({
       hideSuggestionPanel();
       hidePopover();
 
-      if (settings.checkMode === 'realtime') {
+      if (settings.checkMode === "realtime") {
         const text = getTextFromElement(element);
         if (text.length > 10) {
           debouncedCheck(text);
@@ -992,7 +1082,7 @@ export default defineContentScript({
       if (isChecking || !activeElement) return;
       isChecking = true;
 
-      showStatusButton('loading');
+      showStatusButton("loading");
 
       try {
         const result = await checkGrammarRequest(text);
@@ -1001,13 +1091,13 @@ export default defineContentScript({
           renderUnderlines();
 
           if (currentSuggestions.length > 0) {
-            showStatusButton('errors', currentSuggestions.length);
+            showStatusButton("errors", currentSuggestions.length);
           } else {
-            showStatusButton('clean');
+            showStatusButton("clean");
           }
         }
       } catch (error) {
-        console.error('Grammar check error:', error);
+        console.error("Grammar check error:", error);
         hideStatusButton();
       } finally {
         isChecking = false;
@@ -1016,37 +1106,47 @@ export default defineContentScript({
 
     // Message listener for keyboard shortcut
     browser.runtime.onMessage.addListener((message) => {
-      if (message.type === 'TRIGGER_CHECK' && activeElement) {
+      if (message.type === "TRIGGER_CHECK" && activeElement) {
         const text = getTextFromElement(activeElement);
         if (text.length > 3) {
-          showStatusButton('loading');
-          checkGrammarRequest(text, true).then((result) => {
-            if (result) {
-              currentSuggestions = result.suggestions;
-              renderUnderlines();
-              if (currentSuggestions.length > 0) {
-                showStatusButton('errors', currentSuggestions.length);
-              } else {
-                showStatusButton('clean');
+          showStatusButton("loading");
+          checkGrammarRequest(text, true)
+            .then((result) => {
+              if (result) {
+                currentSuggestions = result.suggestions;
+                renderUnderlines();
+                if (currentSuggestions.length > 0) {
+                  showStatusButton("errors", currentSuggestions.length);
+                } else {
+                  showStatusButton("clean");
+                }
               }
-            }
-          }).catch(() => {
-            hideStatusButton();
-          });
+            })
+            .catch(() => {
+              hideStatusButton();
+            });
         }
       }
     });
 
     // Setup event listeners
-    document.addEventListener('focusin', (e) => {
-      if (e.target instanceof HTMLElement) handleFocus(e.target);
-    }, true);
+    document.addEventListener(
+      "focusin",
+      (e) => {
+        if (e.target instanceof HTMLElement) handleFocus(e.target);
+      },
+      true
+    );
 
-    document.addEventListener('focusout', () => handleBlur(), true);
+    document.addEventListener("focusout", () => handleBlur(), true);
 
-    document.addEventListener('input', (e) => {
-      if (e.target instanceof HTMLElement) handleInput(e.target);
-    }, true);
+    document.addEventListener(
+      "input",
+      (e) => {
+        if (e.target instanceof HTMLElement) handleInput(e.target);
+      },
+      true
+    );
 
     const handleScroll = debounce(() => {
       if (activeElement && currentSuggestions.length > 0) {
@@ -1062,14 +1162,24 @@ export default defineContentScript({
       }
     }, 50);
 
-    window.addEventListener('scroll', handleScroll, { passive: true, capture: true });
-    document.addEventListener('scroll', handleScroll, { passive: true, capture: true });
+    window.addEventListener("scroll", handleScroll, {
+      passive: true,
+      capture: true,
+    });
+    document.addEventListener("scroll", handleScroll, {
+      passive: true,
+      capture: true,
+    });
 
-    window.addEventListener('resize', () => {
-      if (activeElement && currentSuggestions.length > 0) {
-        renderUnderlines();
-      }
-    }, { passive: true });
+    window.addEventListener(
+      "resize",
+      () => {
+        if (activeElement && currentSuggestions.length > 0) {
+          renderUnderlines();
+        }
+      },
+      { passive: true }
+    );
 
     ctx.onInvalidated(() => {
       cleanup();
