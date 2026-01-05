@@ -51,7 +51,7 @@ export interface CacheEntry {
 
 export const DEFAULT_SETTINGS: Settings = {
   provider: 'google',
-  model: 'gemini-2.0-flash',
+  model: 'gemini-2.5-flash',
   checkMode: 'realtime',
   language: 'auto',
   enabled: true,
@@ -60,19 +60,22 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export const AVAILABLE_MODELS: Record<AIProvider, { id: string; name: string }[]> = {
   google: [
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Recommended)' },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Recommended)' },
+    { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite (Fastest)' },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
   ],
   openai: [
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Recommended)' },
     { id: 'gpt-4o', name: 'GPT-4o' },
-    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
+    { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
+    { id: 'o1-mini', name: 'o1 Mini (Reasoning)' },
   ],
   anthropic: [
     { id: 'claude-3-5-haiku-latest', name: 'Claude 3.5 Haiku (Recommended)' },
+    { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
     { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet' },
-    { id: 'claude-3-opus-latest', name: 'Claude 3 Opus' },
+    { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
   ],
 };
 

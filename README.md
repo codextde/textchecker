@@ -1,6 +1,26 @@
 # TextChecker - AI-Powered Grammar Assistant
 
-An open-source Chrome extension that provides grammar, spelling, and style checking using AI models. A free alternative to LanguageTool, powered by your own API keys.
+A **free, open-source alternative to LanguageTool** browser extension. Provides grammar, spelling, and style checking using AI models, powered by your own API keys.
+
+## Why TextChecker?
+
+In January 2025, [LanguageTool announced](https://languagetool.org/de/webextension/premium-announcement) that their browser extension would become **paid-only**, requiring a premium subscription to use. After years of offering a free tier, they decided to restrict the browser extension exclusively to paying customers.
+
+> *"We have made the difficult decision to restrict the use of the LanguageTool browser extension to Premium users."* — LanguageTool
+
+**TextChecker was created as a free, open-source response** to this change. Instead of paying for a subscription, you can use your own AI API keys (Google Gemini, OpenAI, or Anthropic Claude) to get the same grammar checking functionality — often with **better results** thanks to modern AI models.
+
+### TextChecker vs LanguageTool Premium
+
+| Feature | TextChecker | LanguageTool Premium |
+|---------|-------------|---------------------|
+| Price | **Free** (pay only for API usage) | ~$60-150/year |
+| AI-powered checking | Yes (Gemini, GPT, Claude) | Yes |
+| Browser extension | Yes | Yes |
+| Real-time checking | Yes | Yes |
+| Style suggestions | Yes | Yes |
+| Privacy | Your API keys, your data | Third-party servers |
+| Open source | Yes | No |
 
 ## Features
 
@@ -105,8 +125,12 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
+## Keywords
+
+LanguageTool alternative, free grammar checker, open source grammar checker, LanguageTool replacement, browser grammar extension, AI grammar checker, Gemini grammar checker, GPT grammar checker, Claude grammar checker, free LanguageTool alternative 2025
+
 ## Acknowledgments
 
-- Inspired by [LanguageTool](https://languagetool.org/)
+- Created as a free alternative after [LanguageTool's decision to go premium-only](https://languagetool.org/de/webextension/premium-announcement)
 - Built with [WXT](https://wxt.dev/)
 - Powered by [Vercel AI SDK](https://ai-sdk.dev/)
