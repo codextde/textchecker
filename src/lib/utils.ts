@@ -68,6 +68,9 @@ export function isEditableElement(element: Element): boolean {
   // Check for common rich text editor patterns
   if (element.getAttribute('role') === 'textbox') return true;
 
+  // Gmail-specific editable attribute
+  if (element.getAttribute('g_editable') === 'true') return true;
+
   return false;
 }
 
