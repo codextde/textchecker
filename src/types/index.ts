@@ -13,6 +13,7 @@ export interface APIKeys {
 export interface Settings {
   provider: AIProvider;
   model: string;
+  customModel?: string;
   checkMode: CheckMode;
   language: string;
   enabled: boolean;

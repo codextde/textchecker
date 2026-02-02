@@ -52,13 +52,14 @@ export default defineBackground(() => {
             return;
           }
 
-          // Perform grammar check
-          const result = await checkGrammar(text, {
-            provider: settings.provider,
-            model: settings.model,
-            apiKey,
-            language: settings.language,
-          });
+           // Perform grammar check - use customModel if model is 'custom'
+           const modelId = settings.model === 'custom' ? settings.customModel : settings.model;
+           const result = await checkGrammar(text, {
+             provider: settings.provider,
+             model: modelId || settings.model,
+             apiKey,
+             language: settings.language,
+           });
 
           // Filter out words in personal dictionary
           const dictionary = await dictionaryStorage.getValue();
@@ -102,11 +103,12 @@ export default defineBackground(() => {
             return;
           }
 
-          const rewritten = await rewriteText(text, style, {
-            provider: settings.provider,
-            model: settings.model,
-            apiKey,
-          });
+           const modelId = settings.model === 'custom' ? settings.customModel : settings.model;
+           const rewritten = await rewriteText(text, style, {
+             provider: settings.provider,
+             model: modelId || settings.model,
+             apiKey,
+           });
 
           sendResponse({ success: true, result: rewritten });
           break;

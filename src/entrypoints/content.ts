@@ -49,6 +49,124 @@ export default defineContentScript({
       console.error("Failed to watch settings:", error);
     }
 
+    // TextareaObserver for dynamic element detection
+    class TextareaObserver {
+      private observer: MutationObserver | null = null;
+      private processedElements = new WeakSet<HTMLElement>();
+      private pendingElements = new Set<HTMLElement>();
+      private rafId: number | null = null;
+
+      start() {
+        if (this.observer) return;
+
+        // Process existing textareas first
+        this.scanExistingElements();
+
+        this.observer = new MutationObserver((mutations) => {
+          this.handleMutations(mutations);
+        });
+
+        this.observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["contenteditable", "role"],
+        });
+      }
+
+      stop() {
+        if (this.rafId) {
+          cancelAnimationFrame(this.rafId);
+          this.rafId = null;
+        }
+        if (this.observer) {
+          this.observer.disconnect();
+          this.observer = null;
+        }
+        this.pendingElements.clear();
+      }
+
+      private scanExistingElements() {
+        const textareas = document.querySelectorAll(
+          'textarea, input, [contenteditable="true"], [role="textbox"]'
+        );
+        textareas.forEach((el) => {
+          if (el instanceof HTMLElement && isEditableElement(el)) {
+            this.scheduleProcessing(el);
+          }
+        });
+      }
+
+      private handleMutations(mutations: MutationRecord[]) {
+        for (const mutation of mutations) {
+          // Handle attribute changes (contenteditable or role added to existing element)
+          if (mutation.type === "attributes" && mutation.target instanceof HTMLElement) {
+            this.checkElement(mutation.target);
+          }
+          
+          // Handle new nodes
+          for (const node of mutation.addedNodes) {
+            if (node instanceof HTMLElement) {
+              this.checkElement(node);
+            }
+          }
+        }
+      }
+
+      private checkElement(element: HTMLElement) {
+        // Check the element itself
+        if (
+          isEditableElement(element) &&
+          !this.processedElements.has(element)
+        ) {
+          this.scheduleProcessing(element);
+        }
+
+        // Check children
+        const editables = element.querySelectorAll(
+          'textarea, input, [contenteditable="true"], [role="textbox"]'
+        );
+        editables.forEach((el) => {
+          if (
+            el instanceof HTMLElement &&
+            isEditableElement(el) &&
+            !this.processedElements.has(el)
+          ) {
+            this.scheduleProcessing(el);
+          }
+        });
+      }
+
+      private scheduleProcessing(element: HTMLElement) {
+        this.pendingElements.add(element);
+
+        if (!this.rafId) {
+          this.rafId = requestAnimationFrame(() => {
+            this.processBatch();
+          });
+        }
+      }
+
+      private processBatch() {
+        this.rafId = null;
+
+        this.pendingElements.forEach((element) => {
+          if (
+            !this.processedElements.has(element) &&
+            document.contains(element)
+          ) {
+            this.processedElements.add(element);
+            handleFocus(element);
+          }
+        });
+
+        this.pendingElements.clear();
+      }
+    }
+
+    const textareaObserver = new TextareaObserver();
+    textareaObserver.start();
+
     // Styles for Shadow DOM
     const STYLES = `
       * {
@@ -1182,6 +1300,7 @@ export default defineContentScript({
     );
 
     ctx.onInvalidated(() => {
+      textareaObserver.stop();
       cleanup();
       if (unwatchSettings) unwatchSettings();
     });

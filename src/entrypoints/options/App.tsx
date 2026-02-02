@@ -76,18 +76,18 @@ export default function App() {
         </header>
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          {/* Tab navigation */}
-          <div className="border-b border-gray-200">
-            <nav className="flex gap-1 p-2">
+           {/* Tab navigation */}
+           <div className="border-b border-gray-200">
+             <nav className="flex flex-col sm:flex-row gap-1 p-2">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    activeTab === tab.id
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
+                   className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors w-full sm:w-auto ${
+                     activeTab === tab.id
+                       ? 'bg-blue-100 text-blue-700'
+                       : 'text-gray-600 hover:bg-gray-100'
+                   }`}
                 >
                   {tab.icon}
                   {tab.label}
@@ -248,20 +248,44 @@ function SettingsTab({
         </select>
       </div>
 
-      <div>
-        <label className="block font-medium text-gray-900 mb-2">Model</label>
-        <select
-          value={settings.model}
-          onChange={(e) => saveSettings({ ...settings, model: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          {AVAILABLE_MODELS[settings.provider].map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.name}
-            </option>
-          ))}
-        </select>
-      </div>
+       <div>
+         <label className="block font-medium text-gray-900 mb-2">Model</label>
+         <select
+           value={settings.model}
+           onChange={(e) => {
+             const model = e.target.value;
+             if (model === 'custom') {
+               saveSettings({ ...settings, model: 'custom' });
+             } else {
+               saveSettings({ ...settings, model, customModel: undefined });
+             }
+           }}
+           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+         >
+           {AVAILABLE_MODELS[settings.provider].map((model) => (
+             <option key={model.id} value={model.id}>
+               {model.name}
+             </option>
+           ))}
+           <option value="custom">Use custom model...</option>
+         </select>
+       </div>
+
+       {settings.model === 'custom' && (
+         <div className="mt-3">
+           <label className="block font-medium text-gray-900 mb-2">Custom Model ID</label>
+           <input
+             type="text"
+             value={settings.customModel || ''}
+             onChange={(e) => saveSettings({ ...settings, customModel: e.target.value })}
+             placeholder="e.g., gpt-4-turbo-preview"
+             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+           />
+           <p className="text-sm text-gray-500 mt-1">
+             Enter the exact model ID from your AI provider
+           </p>
+         </div>
+       )}
 
       <div>
         <label className="block font-medium text-gray-900 mb-2">Check Mode</label>
@@ -388,8 +412,8 @@ function DictionaryTab({
 }
 
 function StatsTab({ stats }: { stats: { checksPerformed: number; errorsFound: number; correctionsApplied: number } }) {
-  return (
-    <div className="grid grid-cols-3 gap-6">
+   return (
+     <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
       <div className="bg-blue-50 rounded-lg p-6 text-center">
         <div className="text-3xl font-bold text-blue-600">{stats.checksPerformed}</div>
         <div className="text-sm text-blue-800 mt-1">Checks Performed</div>

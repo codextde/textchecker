@@ -55,14 +55,14 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="w-80 p-4 flex items-center justify-center">
+      <div className="w-full min-w-64 max-w-80 p-4 flex items-center justify-center">
         <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full" />
       </div>
     );
   }
 
   return (
-    <div className="w-80 bg-white">
+    <div className="w-full min-w-64 max-w-80 bg-white">
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4">
         <div className="flex items-center justify-between">

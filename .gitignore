@@ -38,3 +38,4 @@ coverage/
 # Claude flow (generated)
 .claude-flow/
 .hive-mind/
+.sisyphus/
