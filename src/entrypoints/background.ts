@@ -1,4 +1,5 @@
-import { checkGrammar, rewriteText } from '@/lib/ai/grammar-check';
+import { requestCodex } from '@/lib/ai/codex';
+import { checkGrammar, isValidSuggestion, rewriteText } from '@/lib/ai/grammar-check';
 import { settingsStorage, apiKeysStorage, getCachedResult, setCachedResult, incrementStats, dictionaryStorage } from '@/lib/storage';
 import type { GrammarSuggestion } from '@/types';
 
@@ -30,21 +31,31 @@ export default defineBackground(() => {
         case 'CHECK_GRAMMAR': {
           const { text, forceCheck } = message.payload as { text: string; forceCheck?: boolean };
 
-          // Check cache first (unless force check is requested)
+          const settings = await settingsStorage.getValue();
+
+          const modelId = settings.model === 'custom' ? settings.customModel?.trim() : settings.model;
+          const model = modelId || (settings.provider === 'codex' ? 'codex-default' : settings.model);
+          const cacheKey = JSON.stringify(['grammar-lines-v2', settings.provider, model, settings.language, text]);
+
           if (!forceCheck) {
-            const cached = await getCachedResult(text);
-            if (cached) {
-              sendResponse({ success: true, result: cached.result });
+            const cached = await getCachedResult(cacheKey);
+            if (cached?.result.text === text) {
+              const suggestions = cached.result.suggestions.filter((suggestion) => isValidSuggestion(suggestion, text));
+              sendResponse({
+                success: true,
+                result: {
+                  ...cached.result,
+                  suggestions,
+                  incomplete: cached.result.incomplete || suggestions.length < cached.result.suggestions.length,
+                },
+              });
               return;
             }
           }
 
-          // Get settings and API keys
-          const settings = await settingsStorage.getValue();
-          const apiKeys = await apiKeysStorage.getValue();
-          const apiKey = apiKeys[settings.provider];
+          const apiKey = settings.provider === 'codex' ? '' : (await apiKeysStorage.getValue())[settings.provider];
 
-          if (!apiKey) {
+          if (settings.provider !== 'codex' && !apiKey) {
             sendResponse({
               success: false,
               error: `No API key configured for ${settings.provider}. Please add your API key in the extension settings.`,
@@ -52,14 +63,12 @@ export default defineBackground(() => {
             return;
           }
 
-           // Perform grammar check - use customModel if model is 'custom'
-           const modelId = settings.model === 'custom' ? settings.customModel : settings.model;
-           const result = await checkGrammar(text, {
-             provider: settings.provider,
-             model: modelId || settings.model,
-             apiKey,
-             language: settings.language,
-           });
+          const result = await checkGrammar(text, {
+            provider: settings.provider,
+            model,
+            apiKey: apiKey ?? '',
+            language: settings.language,
+          });
 
           // Filter out words in personal dictionary
           const dictionary = await dictionaryStorage.getValue();
@@ -70,12 +79,9 @@ export default defineBackground(() => {
             return true;
           });
 
-          // Cache the result
-          await setCachedResult(text, {
-            text,
-            result,
-            timestamp: Date.now(),
-          });
+          if (!result.incomplete) {
+            await setCachedResult(cacheKey, { text, result, timestamp: Date.now() });
+          }
 
           // Update stats
           await incrementStats('checksPerformed');
@@ -92,10 +98,9 @@ export default defineBackground(() => {
           };
 
           const settings = await settingsStorage.getValue();
-          const apiKeys = await apiKeysStorage.getValue();
-          const apiKey = apiKeys[settings.provider];
+          const apiKey = settings.provider === 'codex' ? '' : (await apiKeysStorage.getValue())[settings.provider];
 
-          if (!apiKey) {
+          if (settings.provider !== 'codex' && !apiKey) {
             sendResponse({
               success: false,
               error: `No API key configured for ${settings.provider}.`,
@@ -103,14 +108,26 @@ export default defineBackground(() => {
             return;
           }
 
-           const modelId = settings.model === 'custom' ? settings.customModel : settings.model;
-           const rewritten = await rewriteText(text, style, {
-             provider: settings.provider,
-             model: modelId || settings.model,
-             apiKey,
-           });
+          const modelId = settings.model === 'custom' ? settings.customModel?.trim() : settings.model;
+          const rewritten = await rewriteText(text, style, {
+            provider: settings.provider,
+            model: modelId || (settings.provider === 'codex' ? 'codex-default' : settings.model),
+            apiKey: apiKey ?? '',
+          });
 
           sendResponse({ success: true, result: rewritten });
+          break;
+        }
+
+        case 'CODEX_MODELS': {
+          const response = await requestCodex({ type: 'models' });
+          sendResponse(response);
+          break;
+        }
+
+        case 'CODEX_STATUS': {
+          await requestCodex({ type: 'status' });
+          sendResponse({ success: true });
           break;
         }
 
