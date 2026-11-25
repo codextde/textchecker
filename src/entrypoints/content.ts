@@ -765,16 +765,16 @@ export default defineContentScript({
                 )}">${getSuggestionLabel(s.type)}</span>
               </div>
               <div class="tc-suggestion-text">
-                <span class="tc-original">${escapeHtml(s.original)}</span>
+                <span class="tc-original">${escapeHtml(s.original || "Insert")}</span>
                 <span class="tc-arrow">→</span>
-                <span class="tc-replacement">${escapeHtml(s.replacement)}</span>
+                <span class="tc-replacement">${escapeHtml(s.replacement || "Remove")}</span>
               </div>
               <div class="tc-explanation">${escapeHtml(s.explanation)}</div>
               <div class="tc-suggestion-actions">
                 <button class="tc-btn tc-btn-primary tc-btn-sm" data-action="apply" data-index="${i}">Apply</button>
                 <button class="tc-btn tc-btn-secondary tc-btn-sm" data-action="ignore" data-index="${i}">Ignore</button>
                 ${
-                  s.type === "spelling"
+                  s.type === "spelling" && s.original.trim()
                     ? `<button class="tc-btn tc-btn-text tc-btn-sm" data-action="dictionary" data-index="${i}">Add to dictionary</button>`
                     : ""
                 }
@@ -1027,10 +1027,10 @@ export default defineContentScript({
       currentPopover.innerHTML = `
         <div class="tc-popover-header">
           <span class="tc-badge" style="background: ${color}">${label}</span>
-          <span class="tc-original">${escapeHtml(suggestion.original)}</span>
+          <span class="tc-original">${escapeHtml(suggestion.original || "Insert")}</span>
           <span class="tc-arrow">→</span>
           <span class="tc-replacement">${escapeHtml(
-            suggestion.replacement
+            suggestion.replacement || "Remove"
           )}</span>
         </div>
         <div class="tc-explanation">${escapeHtml(suggestion.explanation)}</div>
@@ -1038,7 +1038,7 @@ export default defineContentScript({
           <button class="tc-btn tc-btn-primary" data-action="apply">Apply</button>
           <button class="tc-btn tc-btn-secondary" data-action="ignore">Ignore</button>
           ${
-            suggestion.type === "spelling"
+            suggestion.type === "spelling" && suggestion.original.trim()
               ? '<button class="tc-btn tc-btn-text" data-action="dictionary">+Dict</button>'
               : ""
           }
@@ -1249,15 +1249,16 @@ export default defineContentScript({
           ? getTextareaCharacterRects(element, startIndex, endIndex)
           : Array.from(editorRange?.(startIndex, endIndex)?.getClientRects() ?? []);
 
+        const insertion = startIndex === endIndex;
         rects.forEach((rect) => {
-          if (rect.width <= 0 || rect.height <= 0) return;
+          if (rect.height <= 0 || (!insertion && rect.width <= 0)) return;
 
           const underline = document.createElement("div");
           underline.className = "tc-underline";
           underline.style.cssText = `
-            left: ${rect.left}px;
+            left: ${insertion ? rect.left - 2 : rect.left}px;
             top: ${rect.bottom - 2}px;
-            width: ${Math.max(rect.width, 4)}px;
+            width: ${insertion ? 4 : Math.max(rect.width, 2)}px;
             background: ${getSuggestionColor(suggestion.type)};
           `;
 

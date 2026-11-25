@@ -10,7 +10,7 @@ IMPORTANT RULES:
 7. Read the surrounding lines before deciding whether text is incomplete. Evaluate words like "Si" in the context of the sentence they introduce.
 8. Keep each suggestion within one line. Never include or replace a line break.
 9. Check spelling and punctuation in every sentence, including short standalone sentences in longer texts. In Spanish, check required accents and opening and closing question or exclamation marks. For example, "Tienes mas tiempo para manana???" should be "¿Tienes más tiempo para mañana?".
-10. Give a nonempty original fragment that occurs only once on its line. Include neighboring words if needed. Combine overlapping changes into one suggestion.
+10. Return one suggestion per independent change. Select only the wrong word or punctuation. Include exactly enough neighboring text to locate a repeated fragment or a missing character. Keep that context identical in the replacement. For example, to add a missing comma after "Si pots" use "Si pots" → "Si pots,".
 
 ISSUE TYPES:
 - spelling: Misspelled words

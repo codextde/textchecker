@@ -1,6 +1,7 @@
 import { generateText } from 'ai';
 import { getModel } from './providers';
 import { requestCodex } from './codex';
+import { splitSuggestion } from './suggestion-edits';
 import { GRAMMAR_CHECK_SYSTEM_PROMPT, createGrammarCheckPrompt, REWRITE_SYSTEM_PROMPT, createRewritePrompt } from './prompts';
 import type { AIProvider, GrammarSuggestion, GrammarCheckResult } from '@/types';
 
@@ -88,14 +89,23 @@ export async function checkGrammar(
     const parsed: AIGrammarResponse = JSON.parse(jsonMatch[0]);
 
     const timestamp = Date.now();
-    const validSuggestions = parsed.suggestions.flatMap((suggestion, index) => {
-      const located = locateSuggestion(suggestion, text, lines, lineStarts);
-      return located ? [{ ...located, id: `suggestion-${timestamp}-${index}` }] : [];
+    const located = parsed.suggestions.flatMap((suggestion) => {
+      const match = locateSuggestion(suggestion, text, lines, lineStarts);
+      return match ? [match] : [];
     });
+    const edits = new Map<string, Omit<GrammarSuggestion, 'id'>>();
+    for (const suggestion of located.flatMap(splitSuggestion)) {
+      const key = JSON.stringify([suggestion.startIndex, suggestion.endIndex, suggestion.replacement]);
+      if (!edits.has(key)) edits.set(key, suggestion);
+    }
+    const validSuggestions = Array.from(edits.values(), (suggestion, index) => ({
+      ...suggestion,
+      id: `suggestion-${timestamp}-${index}`,
+    })).sort((a, b) => a.startIndex - b.startIndex || a.endIndex - b.endIndex);
 
     return {
       suggestions: validSuggestions,
-      incomplete: validSuggestions.length < parsed.suggestions.length,
+      incomplete: located.length < parsed.suggestions.length,
       text,
       language: parsed.detectedLanguage || (language === 'auto' ? 'en' : language),
       timestamp,

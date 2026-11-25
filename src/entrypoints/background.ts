@@ -35,7 +35,7 @@ export default defineBackground(() => {
 
           const modelId = settings.model === 'custom' ? settings.customModel?.trim() : settings.model;
           const model = modelId || (settings.provider === 'codex' ? 'codex-default' : settings.model);
-          const cacheKey = JSON.stringify(['grammar-lines-v1', settings.provider, model, settings.language, text]);
+          const cacheKey = JSON.stringify(['grammar-lines-v2', settings.provider, model, settings.language, text]);
 
           if (!forceCheck) {
             const cached = await getCachedResult(cacheKey);
