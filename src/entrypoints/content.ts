@@ -20,6 +20,7 @@ export default defineContentScript({
 
     let settings: Settings = DEFAULT_SETTINGS;
     let currentSuggestions: GrammarSuggestion[] = [];
+    const underlineTargets = new Map<HTMLElement, { suggestion: GrammarSuggestion; rect: DOMRect }>();
     let checkedText: string | null = null;
     let reviewIncomplete = false;
     let activeElement: HTMLElement | null = null;
@@ -262,6 +263,12 @@ export default defineContentScript({
         pointer-events: auto;
         cursor: pointer;
         transition: opacity 0.2s, height 0.1s;
+      }
+
+      .tc-underline::after {
+        content: "";
+        position: absolute;
+        inset: -3px -1px -4px;
       }
 
       .tc-underline:hover {
@@ -595,6 +602,7 @@ export default defineContentScript({
       fieldCheckTimer = null;
       pendingFieldCheck = null;
       currentSuggestions = [];
+      underlineTargets.clear();
       checkedText = null;
       reviewIncomplete = false;
       hideStatusButton();
@@ -1232,7 +1240,8 @@ export default defineContentScript({
       const container = createOverlayContainer();
       const shadow = container.shadowRoot!;
 
-      shadow.querySelectorAll(".tc-underline").forEach((el) => el.remove());
+      for (const underline of underlineTargets.keys()) underline.remove();
+      underlineTargets.clear();
 
       const element = activeElement;
       if (!element || currentSuggestions.length === 0) return;
@@ -1274,8 +1283,29 @@ export default defineContentScript({
           });
 
           shadow.appendChild(underline);
+          underlineTargets.set(underline, { suggestion, rect });
         });
       });
+    }
+
+    function handleSuggestionContextMenu(event: MouseEvent) {
+      const element = activeElement;
+      if (!element || underlineTargets.size === 0 || getTextFromElement(element) !== checkedText) return;
+
+      const path = event.composedPath();
+      const inEditor = path.includes(element);
+      const { clientX, clientY } = event;
+      for (const [underline, { suggestion, rect }] of underlineTargets) {
+        const horizontalPadding = suggestion.startIndex === suggestion.endIndex ? 4 : 0;
+        const overText = inEditor && clientX >= rect.left - horizontalPadding &&
+          clientX <= rect.right + horizontalPadding && clientY >= rect.top && clientY <= rect.bottom;
+        if (path.includes(underline) || overText) {
+          event.preventDefault();
+          event.stopPropagation();
+          showPopover(suggestion, rect);
+          return;
+        }
+      }
     }
 
     function queueFieldCheck(element: HTMLElement, force = false) {
@@ -1372,6 +1402,7 @@ export default defineContentScript({
     }, true);
 
     document.addEventListener("focusout", handleBlur, true);
+    document.addEventListener("contextmenu", handleSuggestionContextMenu, true);
 
     document.addEventListener("input", (event) => {
       if (event.target instanceof HTMLElement) handleInput(event.target);
@@ -1415,6 +1446,7 @@ export default defineContentScript({
     );
 
     ctx.onInvalidated(() => {
+      document.removeEventListener("contextmenu", handleSuggestionContextMenu, true);
       googleDocsHandler.stop();
       cleanup();
       if (unwatchSettings) unwatchSettings();
