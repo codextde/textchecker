@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
 import { settingsStorage, statsStorage } from '@/lib/storage';
-import type { Settings, AIProvider, CheckMode } from '@/types';
-import { DEFAULT_SETTINGS } from '@/types';
+import type { Settings, APIKeys, CheckMode } from '@/types';
+import { DEFAULT_SETTINGS, PROVIDER_NAMES } from '@/types';
 import { Settings as SettingsIcon, Power, Keyboard, Zap, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-  const [hasApiKey, setHasApiKey] = useState<Record<AIProvider, boolean>>({
+  const [hasApiKey, setHasApiKey] = useState<Record<keyof APIKeys, boolean>>({
     google: false,
     openai: false,
     anthropic: false,
   });
+  const [codexError, setCodexError] = useState('Could not check the Codex connection.');
   const [stats, setStats] = useState({ checksPerformed: 0, errorsFound: 0, correctionsApplied: 0 });
   const [loading, setLoading] = useState(true);
 
@@ -24,6 +25,10 @@ export default function App() {
       if (response.success) {
         setSettings(response.settings);
         setHasApiKey(response.hasApiKey);
+        if (response.settings.provider === 'codex') {
+          const status = await browser.runtime.sendMessage({ type: 'CODEX_STATUS' });
+          setCodexError(status.success ? '' : status.error);
+        }
       }
       const loadedStats = await statsStorage.getValue();
       setStats(loadedStats);
@@ -50,8 +55,8 @@ export default function App() {
     browser.runtime.openOptionsPage();
   }
 
-  const hasAnyApiKey = hasApiKey.google || hasApiKey.openai || hasApiKey.anthropic;
-  const providerName = settings.provider.charAt(0).toUpperCase() + settings.provider.slice(1);
+  const ready = settings.provider === 'codex' ? !codexError : hasApiKey[settings.provider];
+  const providerName = PROVIDER_NAMES[settings.provider];
 
   if (loading) {
     return (
@@ -83,12 +88,12 @@ export default function App() {
 
       {/* Status */}
       <div className="p-4 border-b border-gray-100">
-        {!hasAnyApiKey ? (
+        {!ready ? (
           <div className="flex items-start gap-3 bg-yellow-50 text-yellow-800 p-3 rounded-lg">
             <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-medium">Setup Required</p>
-              <p className="text-sm">Add an API key to start checking grammar.</p>
+              <p className="text-sm">{settings.provider === 'codex' ? codexError : 'Add an API key or select Codex in Settings.'}</p>
               <button
                 onClick={openOptions}
                 className="text-sm text-yellow-900 underline mt-1"
@@ -117,7 +122,7 @@ export default function App() {
       </div>
 
       {/* Controls */}
-      {hasAnyApiKey && (
+      {ready && (
         <div className="p-4 space-y-3">
           {/* Enable/Disable Toggle */}
           <button

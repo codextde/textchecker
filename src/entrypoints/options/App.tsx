@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
+import type { CodexModel } from '@/lib/ai/codex';
 import { settingsStorage, apiKeysStorage, dictionaryStorage, statsStorage } from '@/lib/storage';
 import type { Settings, APIKeys, AIProvider } from '@/types';
-import { DEFAULT_SETTINGS, AVAILABLE_MODELS, SUPPORTED_LANGUAGES } from '@/types';
+import { DEFAULT_SETTINGS, AVAILABLE_MODELS, PROVIDER_NAMES, SUPPORTED_LANGUAGES } from '@/types';
 import { Key, Settings as SettingsIcon, Book, BarChart3, Eye, EyeOff, Trash2, Save, CheckCircle } from 'lucide-react';
 
 type TabType = 'api-keys' | 'settings' | 'dictionary' | 'stats';
@@ -40,7 +41,7 @@ export default function App() {
     setTimeout(() => setSaveStatus('idle'), 2000);
   }
 
-  async function saveApiKey(provider: AIProvider, key: string) {
+  async function saveApiKey(provider: keyof APIKeys, key: string) {
     const newKeys = { ...apiKeys, [provider]: key };
     setApiKeys(newKeys);
     setSaveStatus('saving');
@@ -146,9 +147,9 @@ function APIKeysTab({
   apiKeys: APIKeys;
   showKeys: Record<string, boolean>;
   setShowKeys: (keys: Record<string, boolean>) => void;
-  saveApiKey: (provider: AIProvider, key: string) => void;
+  saveApiKey: (provider: keyof APIKeys, key: string) => void;
 }) {
-  const providers: { id: AIProvider; name: string; url: string }[] = [
+  const providers: { id: keyof APIKeys; name: string; url: string }[] = [
     { id: 'google', name: 'Google AI (Gemini)', url: 'https://aistudio.google.com/apikey' },
     { id: 'openai', name: 'OpenAI', url: 'https://platform.openai.com/api-keys' },
     { id: 'anthropic', name: 'Anthropic (Claude)', url: 'https://console.anthropic.com/settings/keys' },
@@ -159,7 +160,7 @@ function APIKeysTab({
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h3 className="font-medium text-blue-900 mb-2">How to get API keys</h3>
         <p className="text-sm text-blue-800">
-          You need at least one API key to use TextChecker. Your keys are stored securely in your browser
+          Codex uses your ChatGPT sign-in through the local bridge. For the providers below, enter an API key. Your keys are stored in your browser
           and synced across your devices. They are never sent to any server except the AI provider.
         </p>
       </div>
@@ -216,19 +217,56 @@ function SettingsTab({
   saveSettings: (settings: Settings) => void;
   apiKeys: APIKeys;
 }) {
-  const providers: AIProvider[] = ['google', 'openai', 'anthropic'];
-  const availableProviders = providers.filter((p) => apiKeys[p]);
+  const providers: AIProvider[] = ['google', 'openai', 'anthropic', 'codex'];
+  const [codexModels, setCodexModels] = useState<CodexModel[]>([]);
+  const [codexStatus, setCodexStatus] = useState('');
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [modelRefresh, setModelRefresh] = useState(0);
+  const isCodex = settings.provider === 'codex';
+
+  useEffect(() => {
+    if (!isCodex) return;
+
+    let active = true;
+    setLoadingModels(true);
+    setCodexStatus('Loading models from Codex…');
+
+    async function loadModels() {
+      try {
+        const response = await browser.runtime.sendMessage({ type: 'CODEX_MODELS' });
+        if (!response?.success || !Array.isArray(response.models)) {
+          throw new Error(response?.error || 'Update the local TextChecker bridge to load Codex models.');
+        }
+        if (active) {
+          setCodexModels(response.models);
+          setCodexStatus(response.models.length
+            ? 'Models loaded from your Codex session.'
+            : 'Codex returned no selectable models.');
+        }
+      } catch (error) {
+        if (active) {
+          setCodexStatus(error instanceof Error ? error.message : 'Could not load Codex models.');
+        }
+      } finally {
+        if (active) setLoadingModels(false);
+      }
+    }
+
+    void loadModels();
+    return () => { active = false; };
+  }, [isCodex, modelRefresh]);
+
+  const defaultCodexModel = codexModels.find((model) => model.isDefault);
+  const models = isCodex ? [
+    {
+      id: 'codex-default',
+      name: defaultCodexModel ? `Codex default (${defaultCodexModel.name})` : 'Codex default',
+    },
+    ...codexModels,
+  ] : AVAILABLE_MODELS[settings.provider];
 
   return (
     <div className="space-y-6">
-      {availableProviders.length === 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-yellow-800">
-            Please add at least one API key in the "API Keys" tab to use TextChecker.
-          </p>
-        </div>
-      )}
-
       <div>
         <label className="block font-medium text-gray-900 mb-2">AI Provider</label>
         <select
@@ -236,13 +274,18 @@ function SettingsTab({
           onChange={(e) => {
             const provider = e.target.value as AIProvider;
             const defaultModel = AVAILABLE_MODELS[provider][0].id;
-            saveSettings({ ...settings, provider, model: defaultModel });
+            saveSettings({
+              ...settings,
+              provider,
+              model: defaultModel,
+              checkMode: provider === 'codex' ? 'ondemand' : settings.checkMode,
+            });
           }}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {providers.map((p) => (
-            <option key={p} value={p} disabled={!apiKeys[p]}>
-              {p.charAt(0).toUpperCase() + p.slice(1)} {!apiKeys[p] && '(no API key)'}
+            <option key={p} value={p} disabled={p !== 'codex' && !apiKeys[p]}>
+              {PROVIDER_NAMES[p]} {p !== 'codex' && !apiKeys[p] && '(no API key)'}
             </option>
           ))}
         </select>
@@ -262,7 +305,10 @@ function SettingsTab({
            }}
            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
          >
-           {AVAILABLE_MODELS[settings.provider].map((model) => (
+           {isCodex && settings.model !== 'custom' && !models.some((model) => model.id === settings.model) && (
+             <option value={settings.model}>{settings.model} (saved model)</option>
+           )}
+           {models.map((model) => (
              <option key={model.id} value={model.id}>
                {model.name}
              </option>
@@ -270,6 +316,20 @@ function SettingsTab({
            <option value="custom">Use custom model...</option>
          </select>
        </div>
+
+       {isCodex && (
+         <div className="text-sm">
+           <button
+             type="button"
+             onClick={() => setModelRefresh((count) => count + 1)}
+             disabled={loadingModels}
+             className="font-medium text-blue-700 underline disabled:opacity-50"
+           >
+             Refresh Codex models
+           </button>
+           <p role="status" className="mt-1 text-gray-500">{codexStatus}</p>
+         </div>
+       )}
 
        {settings.model === 'custom' && (
          <div className="mt-3">

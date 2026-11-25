@@ -2,11 +2,15 @@ export const GRAMMAR_CHECK_SYSTEM_PROMPT = `You are a professional grammar, spel
 
 IMPORTANT RULES:
 1. Only identify REAL errors - do not flag correct text
-2. Be precise with character positions - they must match exactly
+2. Copy the original fragment exactly and give its line number
 3. Consider the context and language of the text
 4. For each issue, provide a clear, helpful explanation
 5. Respect regional variations (e.g., British vs American English)
 6. Do not change the author's voice or style unless it's grammatically incorrect
+7. Read the surrounding lines before deciding whether text is incomplete. Evaluate words like "Si" in the context of the sentence they introduce.
+8. Keep each suggestion within one line. Never include or replace a line break.
+9. Check spelling and punctuation in every sentence, including short standalone sentences in longer texts. In Spanish, check required accents and opening and closing question or exclamation marks. For example, "Tienes mas tiempo para manana???" should be "¿Tienes más tiempo para mañana?".
+10. Give a nonempty original fragment that occurs only once on its line. Include neighboring words if needed. Combine overlapping changes into one suggestion.
 
 ISSUE TYPES:
 - spelling: Misspelled words
@@ -22,8 +26,7 @@ Respond ONLY with valid JSON in this exact format:
       "replacement": "corrected text",
       "explanation": "brief explanation of the issue",
       "type": "spelling|grammar|punctuation|style",
-      "startIndex": 0,
-      "endIndex": 10
+      "line": 1
     }
   ],
   "detectedLanguage": "en"
@@ -35,23 +38,22 @@ If no issues are found, return:
   "detectedLanguage": "en"
 }`;
 
-export function createGrammarCheckPrompt(text: string, language: string): string {
+export function createGrammarCheckPrompt(lines: string[], language: string): string {
   const languageInstruction = language === 'auto'
     ? 'Detect the language automatically.'
     : `The text is in ${language}. Check according to ${language} grammar rules.`;
 
+  const numberedText = lines.map((line, index) => `${index + 1} | ${line}`).join('\n');
+
   return `${languageInstruction}
 
-Analyze the following text for grammar, spelling, punctuation, and style issues:
+Analyze the entire numbered text for grammar, spelling, punctuation, and style issues. The line number and bar are labels, separate from the text.
 
 """
-${text}
+${numberedText}
 """
 
-Remember:
-- startIndex and endIndex are 0-based character positions
-- "original" must be the EXACT text from the input at those positions
-- Only report genuine errors`;
+For each suggestion, copy the original fragment exactly and include its line number.`;
 }
 
 export const REWRITE_SYSTEM_PROMPT = `You are a professional writing assistant. Your task is to rewrite text while:

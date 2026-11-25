@@ -1,4 +1,4 @@
-export type AIProvider = 'google' | 'openai' | 'anthropic';
+export type AIProvider = keyof APIKeys | 'codex';
 
 export type CheckMode = 'realtime' | 'ondemand';
 
@@ -31,6 +31,7 @@ export interface GrammarSuggestion {
 }
 
 export interface GrammarCheckResult {
+  incomplete?: boolean;
   suggestions: GrammarSuggestion[];
   text: string;
   language: string;
@@ -59,7 +60,15 @@ export const DEFAULT_SETTINGS: Settings = {
   realtimeDelay: 500,
 };
 
+export const PROVIDER_NAMES: Record<AIProvider, string> = {
+  google: 'Google',
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  codex: 'Codex (ChatGPT subscription)',
+};
+
 export const AVAILABLE_MODELS: Record<AIProvider, { id: string; name: string }[]> = {
+  codex: [{ id: 'codex-default', name: 'Codex default' }],
   google: [
     { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Recommended)' },
     { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite (Fastest)' },

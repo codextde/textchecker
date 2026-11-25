@@ -1,6 +1,6 @@
 # TextChecker - AI-Powered Grammar Assistant
 
-A **free, open-source alternative to LanguageTool** browser extension. Provides grammar, spelling, and style checking using AI models, powered by your own API keys.
+A **free, open-source alternative to LanguageTool** browser extension. Provides grammar, spelling, and style checking using AI models, powered by your own API keys or a ChatGPT subscription with Codex access.
 
 <img width="607" height="361" alt="image" src="https://github.com/user-attachments/assets/2252ce4f-0013-4f2f-9f62-2abb1b0a3dc5" />
 
@@ -27,7 +27,7 @@ In January 2025, [LanguageTool announced](https://languagetool.org/de/webextensi
 
 ## Features
 
-- **Multi-provider AI support**: Google Gemini, OpenAI GPT, and Anthropic Claude
+- **Multi-provider AI support**: Google Gemini, OpenAI GPT, Anthropic Claude, and Codex
 - **Real-time checking**: Grammar checked as you type (configurable)
 - **On-demand checking**: Use keyboard shortcut (Ctrl/Cmd + Shift + G)
 - **Inline suggestions**: Underlines errors with click-to-fix popovers
@@ -98,6 +98,24 @@ In January 2025, [LanguageTool announced](https://languagetool.org/de/webextensi
 4. Choose your preferred provider and model
 5. Select check mode (real-time or on-demand)
 
+### Use a ChatGPT subscription with Codex on Linux
+
+Build TextChecker from this checkout. Use a recent [Codex CLI](https://learn.chatgpt.com/docs/non-interactive-mode) and Python 3. Run `codex login status` to check your sign-in. If needed, run `codex login` and choose ChatGPT.
+
+Install the local bridge for your browser after building:
+
+| Browser | Build | Install the bridge |
+| --- | --- | --- |
+| Chromium | `npm run build` | `python3 native/codex_host.py --install chromium` |
+| Google Chrome | `npm run build` | `python3 native/codex_host.py --install chrome` |
+| Firefox | `npm run build:firefox` | `python3 native/codex_host.py --install firefox` |
+
+Load the build as described above. For Firefox, select `.output/firefox-mv2/manifest.json`. Open **TextChecker Settings → Settings**, select **Codex (ChatGPT subscription)** under **AI Provider**, and select a model from the list loaded from Codex. Use **Refresh Codex models** to reload it. Focus a text field and press **Ctrl + Shift + G**.
+
+For Firefox installed with Flatpak, the system needs the [WebExtensions portal](https://firefox-source-docs.mozilla.org/toolkit/components/extensions/webextensions/native-messaging-portal-design.html). If Firefox does not use the available portal automatically, set `widget.use-xdg-desktop-portal.native-messaging` to the number `1` in `about:config`. You can load the archive created by `npm run zip:firefox` as a temporary add-on. Approve the desktop prompt for the TextChecker bridge when Firefox loads the model list.
+
+The bridge uses the existing Codex CLI sign-in and counts requests toward your Codex usage limits. It sends the text to OpenAI through the CLI. Selecting Codex starts in on-demand mode. Real-time checking can use your allowance more quickly. Rerun the installer if you move or reinstall the CLI.
+
 ## Development
 
 ```bash
@@ -135,7 +153,7 @@ TextChecker supports grammar checking in multiple languages including:
 ## Privacy
 
 - Your API keys are stored in Chrome's sync storage and are never sent anywhere except directly to the AI provider you choose
-- Text is only sent to the AI provider when checking grammar
+- Text is sent to your selected provider for grammar checks and rewrites. The Codex bridge uses native messaging and the local CLI sign-in.
 - No analytics or tracking
 - Fully open source - audit the code yourself
 

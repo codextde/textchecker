@@ -20,11 +20,17 @@ export default defineContentScript({
 
     let settings: Settings = DEFAULT_SETTINGS;
     let currentSuggestions: GrammarSuggestion[] = [];
+    let checkedText: string | null = null;
+    let reviewIncomplete = false;
     let activeElement: HTMLElement | null = null;
     let overlayContainer: HTMLDivElement | null = null;
     let statusButton: HTMLDivElement | null = null;
     let suggestionPanel: HTMLDivElement | null = null;
     let isChecking = false;
+    let isApplyingSuggestion = false;
+    let fieldCheckTimer: ReturnType<typeof setTimeout> | null = null;
+    let pendingFieldCheck: { element: HTMLElement; text: string; force: boolean } | null = null;
+    const minTextLength = 3;
     let unwatchSettings: (() => void) | null = null;
     let popoverCloseTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -42,130 +48,14 @@ export default defineContentScript({
           settings = newSettings;
           if (!settings.enabled) {
             cleanup();
+          } else if (activeElement) {
+            queueFieldCheck(activeElement);
           }
         }
       });
     } catch (error) {
       console.error("Failed to watch settings:", error);
     }
-
-    // TextareaObserver for dynamic element detection
-    class TextareaObserver {
-      private observer: MutationObserver | null = null;
-      private processedElements = new WeakSet<HTMLElement>();
-      private pendingElements = new Set<HTMLElement>();
-      private rafId: number | null = null;
-
-      start() {
-        if (this.observer) return;
-
-        // Process existing textareas first
-        this.scanExistingElements();
-
-        this.observer = new MutationObserver((mutations) => {
-          this.handleMutations(mutations);
-        });
-
-        this.observer.observe(document.body, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          attributeFilter: ["contenteditable", "role", "g_editable"],
-        });
-      }
-
-      stop() {
-        if (this.rafId) {
-          cancelAnimationFrame(this.rafId);
-          this.rafId = null;
-        }
-        if (this.observer) {
-          this.observer.disconnect();
-          this.observer = null;
-        }
-        this.pendingElements.clear();
-      }
-
-      private scanExistingElements() {
-        const textareas = document.querySelectorAll(
-          'textarea, input, [contenteditable="true"], [role="textbox"], [g_editable="true"]'
-        );
-        textareas.forEach((el) => {
-          if (el instanceof HTMLElement && isEditableElement(el)) {
-            this.scheduleProcessing(el);
-          }
-        });
-      }
-
-      private handleMutations(mutations: MutationRecord[]) {
-        for (const mutation of mutations) {
-          // Handle attribute changes (contenteditable or role added to existing element)
-          if (mutation.type === "attributes" && mutation.target instanceof HTMLElement) {
-            this.checkElement(mutation.target);
-          }
-          
-          // Handle new nodes
-          for (const node of mutation.addedNodes) {
-            if (node instanceof HTMLElement) {
-              this.checkElement(node);
-            }
-          }
-        }
-      }
-
-      private checkElement(element: HTMLElement) {
-        // Check the element itself
-        if (
-          isEditableElement(element) &&
-          !this.processedElements.has(element)
-        ) {
-          this.scheduleProcessing(element);
-        }
-
-        // Check children
-        const editables = element.querySelectorAll(
-          'textarea, input, [contenteditable="true"], [role="textbox"], [g_editable="true"]'
-        );
-        editables.forEach((el) => {
-          if (
-            el instanceof HTMLElement &&
-            isEditableElement(el) &&
-            !this.processedElements.has(el)
-          ) {
-            this.scheduleProcessing(el);
-          }
-        });
-      }
-
-      private scheduleProcessing(element: HTMLElement) {
-        this.pendingElements.add(element);
-
-        if (!this.rafId) {
-          this.rafId = requestAnimationFrame(() => {
-            this.processBatch();
-          });
-        }
-      }
-
-      private processBatch() {
-        this.rafId = null;
-
-        this.pendingElements.forEach((element) => {
-          if (
-            !this.processedElements.has(element) &&
-            document.contains(element)
-          ) {
-            this.processedElements.add(element);
-            handleFocus(element);
-          }
-        });
-
-        this.pendingElements.clear();
-      }
-    }
-
-    const textareaObserver = new TextareaObserver();
-    textareaObserver.start();
 
     // Google Docs Handler - special support for Google Docs canvas-based editor
     class GoogleDocsHandler {
@@ -317,16 +207,20 @@ export default defineContentScript({
         try {
           const result = await checkGrammarRequest(text);
           if (result) {
+            checkedText = text;
+            reviewIncomplete = !!result.incomplete;
             currentSuggestions = result.suggestions;
             if (currentSuggestions.length > 0) {
               showStatusButton("errors", currentSuggestions.length);
+            } else if (result.incomplete) {
+              showStatusButton("incomplete");
             } else {
               showStatusButton("clean");
             }
           }
         } catch (error) {
-          console.error("Google Docs grammar check error:", error);
-          hideStatusButton();
+          this.lastText = "";
+          showStatusButton("failed", 0, error instanceof Error ? error.message : "Could not check the text.");
         } finally {
           isChecking = false;
         }
@@ -697,7 +591,12 @@ export default defineContentScript({
     }
 
     function cleanup() {
+      if (fieldCheckTimer !== null) clearTimeout(fieldCheckTimer);
+      fieldCheckTimer = null;
+      pendingFieldCheck = null;
       currentSuggestions = [];
+      checkedText = null;
+      reviewIncomplete = false;
       hideStatusButton();
       hideSuggestionPanel();
       hidePopover();
@@ -707,29 +606,18 @@ export default defineContentScript({
       }
     }
 
-    // Check grammar via background script
     async function checkGrammarRequest(
       text: string,
       forceCheck = false
-    ): Promise<GrammarCheckResult | null> {
-      if (!text.trim() || text.length < 3) return null;
-
-      try {
-        const response = await browser.runtime.sendMessage({
-          type: "CHECK_GRAMMAR",
-          payload: { text, forceCheck },
-        });
-
-        if (response.success) {
-          return response.result as GrammarCheckResult;
-        } else {
-          console.error("Grammar check failed:", response.error);
-          return null;
-        }
-      } catch (error) {
-        console.error("Failed to check grammar:", error);
-        return null;
+    ): Promise<GrammarCheckResult> {
+      const response = await browser.runtime.sendMessage({
+        type: "CHECK_GRAMMAR",
+        payload: { text, forceCheck },
+      });
+      if (!response?.success) {
+        throw new Error(response?.error || "Could not check the text.");
       }
+      return response.result as GrammarCheckResult;
     }
 
     // SVG Icons
@@ -742,8 +630,9 @@ export default defineContentScript({
 
     // Show/update status button near the active element
     function showStatusButton(
-      state: "loading" | "errors" | "clean",
-      errorCount = 0
+      state: "loading" | "errors" | "clean" | "failed" | "incomplete",
+      errorCount = 0,
+      errorMessage = ""
     ) {
       if (!activeElement) return;
 
@@ -758,7 +647,7 @@ export default defineContentScript({
       statusButton.className = `tc-status-btn ${
         state === "loading"
           ? "tc-loading"
-          : state === "errors"
+          : state === "errors" || state === "failed" || state === "incomplete"
           ? "tc-has-errors"
           : "tc-no-errors"
       }`;
@@ -781,6 +670,12 @@ export default defineContentScript({
         statusButton.title = `${errorCount} issue${
           errorCount > 1 ? "s" : ""
         } found. Click to see details.`;
+      } else if (state === "failed") {
+        statusButton.textContent = "Check failed";
+        statusButton.title = errorMessage;
+      } else if (state === "incomplete") {
+        statusButton.textContent = "Review incomplete";
+        statusButton.title = "Some suggestions could not be matched to the text. Check again.";
       } else {
         statusButton.innerHTML = `
           <div class="tc-status-icon" style="color: #22c55e;">${ICONS.check}</div>
@@ -911,8 +806,7 @@ export default defineContentScript({
         if (!suggestion) return;
 
         if (action === "apply") {
-          applySuggestion(suggestion);
-          updatePanelAfterChange();
+          if (applySuggestion(suggestion)) updatePanelAfterChange();
         } else if (action === "ignore") {
           ignoreSuggestion(suggestion);
           updatePanelAfterChange();
@@ -969,7 +863,7 @@ export default defineContentScript({
     function updatePanelAfterChange() {
       if (currentSuggestions.length === 0) {
         hideSuggestionPanel();
-        showStatusButton("clean");
+        showStatusButton(reviewIncomplete ? "incomplete" : "clean");
       } else {
         // Re-render panel
         hideSuggestionPanel();
@@ -989,59 +883,51 @@ export default defineContentScript({
       }
     }
 
-    // Get character position rectangles
-    function getCharacterRects(
-      element: HTMLElement,
-      startIndex: number,
-      endIndex: number
-    ): DOMRect[] {
-      const tagName = element.tagName.toLowerCase();
-
-      if (tagName === "textarea" || tagName === "input") {
-        return getTextareaCharacterRects(
-          element as HTMLTextAreaElement | HTMLInputElement,
-          startIndex,
-          endIndex
-        );
-      }
-
-      // For contenteditable
-      const range = document.createRange();
-      let currentIndex = 0;
-      let startNode: Text | null = null;
-      let startOffset = 0;
-      let endNode: Text | null = null;
-      let endOffset = 0;
-
+    function mapEditorRanges(element: HTMLElement, text: string) {
+      const positions: Array<{ node: Text; offset: number } | undefined> = [];
       const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      const visibleRange = document.createRange();
+      let textIndex = 0;
       let node: Text | null;
 
-      while ((node = walker.nextNode() as Text)) {
-        const nodeLength = node.length;
+      while ((node = walker.nextNode() as Text | null)) {
+        if (!node.parentElement || getComputedStyle(node.parentElement).visibility !== "visible") continue;
+        visibleRange.selectNodeContents(node);
+        if (!visibleRange.getClientRects().length) continue;
 
-        if (!startNode && currentIndex + nodeLength > startIndex) {
-          startNode = node;
-          startOffset = startIndex - currentIndex;
+        for (let offset = 0; offset < node.length; offset++) {
+          const character = node.data[offset];
+          if (/\s/.test(character)) {
+            if (text[textIndex] !== character) continue;
+          } else {
+            // innerText includes line breaks between rendered blocks and around <br>.
+            while (/\s/.test(text[textIndex] ?? "")) textIndex++;
+            if (text[textIndex] !== character) return null;
+          }
+          positions[textIndex++] = { node, offset };
         }
-
-        if (!endNode && currentIndex + nodeLength >= endIndex) {
-          endNode = node;
-          endOffset = endIndex - currentIndex;
-          break;
-        }
-
-        currentIndex += nodeLength;
       }
 
-      if (!startNode || !endNode) return [];
+      if (text.slice(textIndex).trim()) return null;
 
-      try {
-        range.setStart(startNode, startOffset);
-        range.setEnd(endNode, endOffset);
-        return Array.from(range.getClientRects());
-      } catch {
-        return [];
-      }
+      return (startIndex: number, endIndex: number) => {
+        const first = positions[startIndex];
+        const last = positions[endIndex - 1];
+        const range = document.createRange();
+
+        if (startIndex === endIndex) {
+          if (first) range.setStart(first.node, first.offset);
+          else if (last) range.setStart(last.node, last.offset + 1);
+          else return null;
+          range.collapse(true);
+        } else {
+          if (!first || !last) return null;
+          range.setStart(first.node, first.offset);
+          range.setEnd(last.node, last.offset + 1);
+        }
+
+        return range;
+      };
     }
 
     function getTextareaCharacterRects(
@@ -1058,18 +944,24 @@ export default defineContentScript({
         position: absolute;
         top: -9999px;
         left: -9999px;
-        white-space: pre-wrap;
-        word-wrap: break-word;
+        white-space: ${element instanceof HTMLInputElement || element.wrap === "off" ? "pre" : "pre-wrap"};
+        overflow-wrap: break-word;
+        box-sizing: border-box;
         overflow: hidden;
         visibility: hidden;
         font-family: ${computedStyle.fontFamily};
         font-size: ${computedStyle.fontSize};
         font-weight: ${computedStyle.fontWeight};
+        font-style: ${computedStyle.fontStyle};
+        text-align: ${computedStyle.textAlign};
+        direction: ${computedStyle.direction};
+        text-transform: ${computedStyle.textTransform};
+        word-spacing: ${computedStyle.wordSpacing};
+        tab-size: ${computedStyle.tabSize};
         line-height: ${computedStyle.lineHeight};
         letter-spacing: ${computedStyle.letterSpacing};
         padding: ${computedStyle.padding};
-        border: ${computedStyle.border};
-        width: ${element.offsetWidth}px;
+        width: ${element.clientWidth}px;
       `;
 
       const before = document.createElement("span");
@@ -1086,24 +978,15 @@ export default defineContentScript({
       mirror.appendChild(after);
       document.body.appendChild(mirror);
 
-      const markedRect = marked.getBoundingClientRect();
       const mirrorRect = mirror.getBoundingClientRect();
-
-      const relativeTop = markedRect.top - mirrorRect.top;
-      const relativeLeft = markedRect.left - mirrorRect.left;
-
-      const scrollTop = element.scrollTop || 0;
-      const scrollLeft = element.scrollLeft || 0;
-
-      const finalRect = new DOMRect(
-        rect.left + relativeLeft - scrollLeft,
-        rect.top + relativeTop - scrollTop,
-        markedRect.width,
-        markedRect.height
-      );
-
-      document.body.removeChild(mirror);
-      return [finalRect];
+      const rects = Array.from(marked.getClientRects(), (part) => new DOMRect(
+        rect.left + element.clientLeft + part.left - mirrorRect.left - element.scrollLeft,
+        rect.top + element.clientTop + part.top - mirrorRect.top - element.scrollTop,
+        part.width,
+        part.height
+      ));
+      mirror.remove();
+      return rects;
     }
 
     // Inline popover (shown on underline click)
@@ -1163,6 +1046,7 @@ export default defineContentScript({
       `;
 
       currentPopover.addEventListener("mousedown", (e) => {
+        e.preventDefault();
         e.stopPropagation();
       });
 
@@ -1174,9 +1058,10 @@ export default defineContentScript({
         const action = target.dataset.action;
 
         if (action === "apply") {
-          applySuggestion(suggestion);
-          hidePopover();
-          updateStatusAfterChange();
+          if (applySuggestion(suggestion)) {
+            hidePopover();
+            updateStatusAfterChange();
+          }
         } else if (action === "ignore") {
           ignoreSuggestion(suggestion);
           hidePopover();
@@ -1240,7 +1125,7 @@ export default defineContentScript({
 
     function updateStatusAfterChange() {
       if (currentSuggestions.length === 0) {
-        showStatusButton("clean");
+        showStatusButton(reviewIncomplete ? "incomplete" : "clean");
       } else {
         showStatusButton("errors", currentSuggestions.length);
       }
@@ -1253,34 +1138,77 @@ export default defineContentScript({
       return div.innerHTML;
     }
 
-    function applySuggestion(suggestion: GrammarSuggestion) {
-      if (!activeElement) return;
+    function applySuggestion(suggestion: GrammarSuggestion): boolean {
+      const element = activeElement;
+      if (!element) return false;
 
-      const text = getTextFromElement(activeElement);
-      const newText =
-        text.substring(0, suggestion.startIndex) +
-        suggestion.replacement +
-        text.substring(suggestion.endIndex);
-      setTextInElement(activeElement, newText);
+      const { startIndex, endIndex, original, replacement } = suggestion;
+      const text = getTextFromElement(element);
+      if (text !== checkedText || text.slice(startIndex, endIndex) !== original) {
+        cleanup();
+        queueFieldCheck(element, true);
+        return false;
+      }
 
-      const lengthDiff =
-        suggestion.replacement.length - suggestion.original.length;
-      currentSuggestions = currentSuggestions
-        .filter((s) => s.id !== suggestion.id)
-        .map((s) => {
-          if (s.startIndex > suggestion.endIndex) {
-            return {
-              ...s,
-              startIndex: s.startIndex + lengthDiff,
-              endIndex: s.endIndex + lengthDiff,
-            };
+      const newText = text.slice(0, startIndex) + replacement + text.slice(endIndex);
+      isApplyingSuggestion = true;
+      try {
+        if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+          setTextInElement(element, newText);
+        } else {
+          const range = mapEditorRanges(element, text)?.(startIndex, endIndex);
+          const selection = window.getSelection();
+          if (!element.isContentEditable || !range || !selection) return false;
+
+          const textNode = range.startContainer as Text;
+          const offset = range.startOffset;
+          const inputType = replacement ? "insertReplacementText" : "deleteContent";
+          const event = { inputType, data: replacement, bubbles: true, composed: true };
+          const targetRange = new StaticRange({
+            startContainer: range.startContainer,
+            startOffset: range.startOffset,
+            endContainer: range.endContainer,
+            endOffset: range.endOffset,
+          });
+
+          element.focus();
+          if (!element.dispatchEvent(new InputEvent("beforeinput", {
+            ...event,
+            cancelable: true,
+            targetRanges: [targetRange],
+          }))) return false;
+          if (!element.contains(textNode) || getTextFromElement(element) !== text) return false;
+
+          if (range.startContainer === range.endContainer) {
+            textNode.replaceData(offset, range.endOffset - offset, replacement);
+          } else {
+            range.deleteContents();
+            textNode.insertData(offset, replacement);
           }
-          return s;
-        });
+          selection.collapse(textNode, offset + replacement.length);
+          element.dispatchEvent(new InputEvent("input", event));
+        }
+      } finally {
+        isApplyingSuggestion = false;
+      }
 
-      browser.runtime
-        .sendMessage({ type: "CORRECTION_APPLIED" })
-        .catch(() => {});
+      const lengthDiff = replacement.length - original.length;
+      checkedText = getTextFromElement(element);
+      currentSuggestions = checkedText === newText
+        ? currentSuggestions.flatMap((item) => {
+            if (item.id === suggestion.id) return [];
+            if (item.endIndex <= startIndex) return [item];
+            if (item.startIndex < endIndex) return [];
+            return [{
+              ...item,
+              startIndex: item.startIndex + lengthDiff,
+              endIndex: item.endIndex + lengthDiff,
+            }];
+          })
+        : [];
+
+      browser.runtime.sendMessage({ type: "CORRECTION_APPLIED" }).catch(() => {});
+      return true;
     }
 
     function ignoreSuggestion(suggestion: GrammarSuggestion) {
@@ -1306,14 +1234,20 @@ export default defineContentScript({
 
       shadow.querySelectorAll(".tc-underline").forEach((el) => el.remove());
 
-      if (!activeElement || currentSuggestions.length === 0) return;
+      const element = activeElement;
+      if (!element || currentSuggestions.length === 0) return;
+      const standardField = element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement;
+      const text = getTextFromElement(element);
+      if (text !== checkedText) return;
+      const editorRange = standardField ? null : mapEditorRanges(element, text);
 
       currentSuggestions.forEach((suggestion) => {
-        const rects = getCharacterRects(
-          activeElement!,
-          suggestion.startIndex,
-          suggestion.endIndex
-        );
+        const { startIndex, endIndex, original } = suggestion;
+        if (text.slice(startIndex, endIndex) !== original) return;
+
+        const rects = standardField
+          ? getTextareaCharacterRects(element, startIndex, endIndex)
+          : Array.from(editorRange?.(startIndex, endIndex)?.getClientRects() ?? []);
 
         rects.forEach((rect) => {
           if (rect.width <= 0 || rect.height <= 0) return;
@@ -1343,23 +1277,72 @@ export default defineContentScript({
       });
     }
 
-    // Event handlers
-    function handleFocus(element: HTMLElement) {
-      if (!settings.enabled || !isEditableElement(element)) return;
+    function queueFieldCheck(element: HTMLElement, force = false) {
+      if (!settings.enabled || (!force && settings.checkMode !== "realtime")) return;
 
-      activeElement = element;
-
-      if (settings.checkMode === "realtime") {
-        const text = getTextFromElement(element);
-        if (text.length > 10) {
-          debouncedCheck(text);
-        }
+      const text = getTextFromElement(element);
+      if (text.trim().length < minTextLength) {
+        cleanup();
+        return;
       }
+
+      pendingFieldCheck = { element, text, force };
+      if (fieldCheckTimer !== null) clearTimeout(fieldCheckTimer);
+      fieldCheckTimer = null;
+
+      if (force) {
+        void runPendingFieldCheck();
+      } else {
+        fieldCheckTimer = setTimeout(() => {
+          fieldCheckTimer = null;
+          void runPendingFieldCheck();
+        }, settings.realtimeDelay);
+      }
+    }
+
+    async function runPendingFieldCheck() {
+      if (isChecking || !pendingFieldCheck || !settings.enabled) return;
+
+      const { element, text, force } = pendingFieldCheck;
+      pendingFieldCheck = null;
+      const isCurrent = () => !ctx.isInvalid && settings.enabled &&
+        (force || settings.checkMode === "realtime") &&
+        activeElement === element && getTextFromElement(element) === text;
+      if (!isCurrent()) return;
+
+      isChecking = true;
+      showStatusButton("loading");
+
+      try {
+        const result = await checkGrammarRequest(text, force);
+        if (isCurrent()) {
+          checkedText = text;
+          reviewIncomplete = !!result.incomplete;
+          currentSuggestions = result.suggestions;
+          renderUnderlines();
+          const count = currentSuggestions.length;
+          showStatusButton(count ? "errors" : result.incomplete ? "incomplete" : "clean", count);
+        }
+      } catch (error) {
+        if (isCurrent()) {
+          showStatusButton("failed", 0, error instanceof Error ? error.message : "Could not check the text.");
+        }
+      } finally {
+        isChecking = false;
+        if (fieldCheckTimer === null) void runPendingFieldCheck();
+      }
+    }
+
+    function handleFocus(element: HTMLElement) {
+      if (isApplyingSuggestion || !settings.enabled || !isEditableElement(element)) return;
+      if (activeElement !== element) cleanup();
+      activeElement = element;
+      queueFieldCheck(element);
     }
 
     function handleBlur() {
       setTimeout(() => {
-        if (document.activeElement !== activeElement) {
+        if (activeElement && !activeElement.contains(document.activeElement)) {
           cleanup();
           activeElement = null;
         }
@@ -1367,95 +1350,35 @@ export default defineContentScript({
     }
 
     function handleInput(element: HTMLElement) {
-      if (!settings.enabled || !isEditableElement(element)) return;
-
+      if (isApplyingSuggestion || !settings.enabled || !isEditableElement(element)) return;
+      cleanup();
       activeElement = element;
-      hideSuggestionPanel();
-      hidePopover();
-
-      if (settings.checkMode === "realtime") {
-        const text = getTextFromElement(element);
-        if (text.length > 10) {
-          debouncedCheck(text);
-        } else {
-          cleanup();
-        }
-      }
+      queueFieldCheck(element);
     }
 
-    const debouncedCheck = debounce(async (text: string) => {
-      if (isChecking || !activeElement) return;
-      isChecking = true;
-
-      showStatusButton("loading");
-
-      try {
-        const result = await checkGrammarRequest(text);
-        if (result && activeElement) {
-          currentSuggestions = result.suggestions;
-          renderUnderlines();
-
-          if (currentSuggestions.length > 0) {
-            showStatusButton("errors", currentSuggestions.length);
-          } else {
-            showStatusButton("clean");
-          }
-        }
-      } catch (error) {
-        console.error("Grammar check error:", error);
-        hideStatusButton();
-      } finally {
-        isChecking = false;
-      }
-    }, settings.realtimeDelay);
-
-    // Message listener for keyboard shortcut
     browser.runtime.onMessage.addListener((message) => {
-      if (message.type === "TRIGGER_CHECK") {
-        if (googleDocsHandler.isGoogleDocs()) {
-          googleDocsHandler.triggerManualCheck();
-        } else if (activeElement) {
-          const text = getTextFromElement(activeElement);
-          if (text.length > 3) {
-            showStatusButton("loading");
-            checkGrammarRequest(text, true)
-              .then((result) => {
-                if (result) {
-                  currentSuggestions = result.suggestions;
-                  renderUnderlines();
-                  if (currentSuggestions.length > 0) {
-                    showStatusButton("errors", currentSuggestions.length);
-                  } else {
-                    showStatusButton("clean");
-                  }
-                }
-              })
-              .catch(() => {
-                hideStatusButton();
-              });
-          }
-        }
+      if (message.type !== "TRIGGER_CHECK" || !settings.enabled) return;
+
+      if (googleDocsHandler.isGoogleDocs()) {
+        googleDocsHandler.triggerManualCheck();
+      } else if (activeElement) {
+        queueFieldCheck(activeElement, true);
       }
     });
 
-    // Setup event listeners
-    document.addEventListener(
-      "focusin",
-      (e) => {
-        if (e.target instanceof HTMLElement) handleFocus(e.target);
-      },
-      true
-    );
+    document.addEventListener("focusin", (event) => {
+      if (event.target instanceof HTMLElement) handleFocus(event.target);
+    }, true);
 
-    document.addEventListener("focusout", () => handleBlur(), true);
+    document.addEventListener("focusout", handleBlur, true);
 
-    document.addEventListener(
-      "input",
-      (e) => {
-        if (e.target instanceof HTMLElement) handleInput(e.target);
-      },
-      true
-    );
+    document.addEventListener("input", (event) => {
+      if (event.target instanceof HTMLElement) handleInput(event.target);
+    }, true);
+
+    if (!googleDocsHandler.isGoogleDocs() && document.activeElement instanceof HTMLElement) {
+      handleFocus(document.activeElement);
+    }
 
     const handleScroll = debounce(() => {
       if (activeElement && currentSuggestions.length > 0) {
@@ -1491,7 +1414,6 @@ export default defineContentScript({
     );
 
     ctx.onInvalidated(() => {
-      textareaObserver.stop();
       googleDocsHandler.stop();
       cleanup();
       if (unwatchSettings) unwatchSettings();
